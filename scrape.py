@@ -20,7 +20,7 @@ class fav_parser(html.parser.HTMLParser):
         self.__tmp_link = ''   # 页码区遇到下一页链接的标签前会碰到别的页码链接
         self.__tag_type = 0    # 1-页码/div/span/a; 2-收藏夹名/h2; 3-题目/h2/a; 4-答主/div/span/a; 5-内容
 
-    def handle_timestamp(self, text):  # 发布/编辑于 2018-01-01/昨天 00:00/00:00 (今天)
+    def handle_timestamp(self, text):  # 格式：发布/编辑于 2018-01-01 / 昨天 00:00 / 00:00 (即今天)
         text = text[text.find('于')+1:].strip()
         if '昨天' in text:
             text = time.strftime("%Y-%m-%d", time.localtime(time.time() - 86400))
@@ -315,8 +315,10 @@ if __name__ == '__main__':  # 脚本模式运行此文件时进入
         fav_title.append(page_html[page_html.find('>', next_entry) + 1 : page_html.find('</', next_entry)])
         next_entry = page_html.find('/collection/', next_entry + 1)
 
+    # 可直接设置fav_entry链接爬取指定的收藏夹(上面all_fav及以下的代码可删去)
     # fav_entry = ['https://www.zhihu.com/collection/106496199']
-    for i in range(5, len(fav_entry)):
+    # fav_title = ['十八字以内...']  # 这个随便设 len与entry一致即可
+    for i in range(0, len(fav_entry)):
         print('\n%s (%s)' % (fav_entry[i], fav_title[i]))
         fav = get_data(fav_entry[i], header, ignore_old=True)
         update_database(fav)
