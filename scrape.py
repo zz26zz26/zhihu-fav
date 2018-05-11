@@ -130,8 +130,10 @@ def update_database(fav):
     ''' 更新收藏夹数据库, fav的内容应属于同一个收藏夹 '''
     conn = sqlite3.connect('fav.db')
     columns = conn.execute('PRAGMA table_info(fav);').fetchall()  # 表中每列属性，无此表返回空
+    if len(columns) != 0:
+        conn.execute('''DROP TABLE IF EXISTS `fav_old`;''')  # 表/列名有.空格/关键字放在反引号``里
+        conn.execute('''ALTER TABLE `fav` RENAME TO `fav_old`;''')
     if len(columns) != 7:
-        conn.execute('''ALTER TABLE `fav` RENAME TO `fav_old`;''')  # 表/列名有.空格/关键字放在反引号``里
         conn.execute('''CREATE TABLE fav (folder   TEXT,
                                           title    TEXT,
                                           author   TEXT,
@@ -297,8 +299,8 @@ def get_avatar(fav, header):
 #####   Run Script   #####
 ##########################
 if __name__ == '__main__':  # 脚本模式运行此文件时进入
-    t0 = time.clock()
-    header = {'Cookie': ''}  # 收藏夹页按F12后复制该页html请求标头的Cookie即可
+    t0 = time.clock()  # ↓ 收藏夹页按F12后复制该页html请求标头的Cookie即可
+    header = {'Cookie': ''}
 
     all_fav = 'https://www.zhihu.com/collections/mine'  # 自带10个收藏夹其余动态加载(个人主页只带4个)
     request = urllib.request.Request(all_fav, headers=header)
@@ -310,11 +312,11 @@ if __name__ == '__main__':  # 脚本模式运行此文件时进入
     next_entry = page_html.find('/collection/')
     while next_entry >= 0:
         fav_entry.append('https://www.zhihu.com' + page_html[next_entry : page_html.find('"', next_entry)])
-        fav_title.append(page_html[page_html.find('>', next_entry)+1 : page_html.find('</a>', next_entry)])
+        fav_title.append(page_html[page_html.find('>', next_entry) + 1 : page_html.find('</', next_entry)])
         next_entry = page_html.find('/collection/', next_entry + 1)
 
     # fav_entry = ['https://www.zhihu.com/collection/106496199']
-    for i in range(0, len(fav_entry)):
+    for i in range(5, len(fav_entry)):
         print('\n%s (%s)' % (fav_entry[i], fav_title[i]))
         fav = get_data(fav_entry[i], header, ignore_old=True)
         update_database(fav)
