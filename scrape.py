@@ -262,6 +262,9 @@ def get_data(entry_url, header, ignore_old = False):
 
 def get_avatar(fav, header):
     ''' 获取答主头像 '''
+    if not os.path.exists("avatar"):
+        os.mkdir("avatar")
+
     img = img_parser()
     failed = []
     existed = [f[0:-4] for f in os.listdir('./avatar')]  # 去掉'.jpg'
@@ -299,7 +302,7 @@ def get_avatar(fav, header):
 #####   Run Script   #####
 ##########################
 if __name__ == '__main__':  # 脚本模式运行此文件时进入
-    t0 = time.clock()  # ↓ 收藏夹页按F12后复制该页html请求标头的Cookie即可
+    t0 = time.clock()  # ↓ 登录信息的Cookie
     header = {'Cookie': ''}
 
     all_fav = 'https://www.zhihu.com/collections/mine'  # 自带10个收藏夹其余动态加载(个人主页只带4个)
@@ -326,4 +329,5 @@ if __name__ == '__main__':  # 脚本模式运行此文件时进入
     
     print('\n')
     export_database()
+    
     print('\nall tasks complete, taking up %.3fs' % (time.clock() - t0))
