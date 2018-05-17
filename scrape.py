@@ -229,13 +229,15 @@ def get_data(entry_url, header, ignore_old = False):
            len(fav.answer_link) == len(fav.answer_data) and \
            len(fav.answer_name) == len(fav.answer_data) and \
            len(fav.answer_time) == len(fav.answer_data):
-            print(''); time.sleep(2)  # 1s太短可能被搞
+            print('')
         else:
             print('-', len(fav.answer_head), len(fav.answer_user), len(fav.answer_link), 
                        len(fav.answer_data), len(fav.answer_time), len(fav.answer_name))
         
         if ignore_old and check_database(fav):
             break
+        else:
+            time.sleep(2)  # 1s太短可能被搞
 
     # 专栏的日期要进文章页才有
     for i in range(len(fav.answer_link)):
