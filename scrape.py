@@ -320,7 +320,7 @@ if __name__ == '__main__':  # 脚本模式运行此文件时进入
         fav_title.append(page_html[page_html.find('>', next_entry) + 1 : page_html.find('</', next_entry)])
         next_entry = page_html.find('/collection/', next_entry + 1)
 
-    # 可直接设置fav_entry链接爬取指定的收藏夹(上面all_fav及以下的代码可删去)
+    # 可直接设置fav_entry链接爬取指定的收藏夹(此时上面all_fav后到这一行之间的代码都可删去)
     # fav_entry = ['https://www.zhihu.com/collection/106496199']
     # fav_title = ['十八字以内...']  # 这个随便设 len与entry一致即可
     for i in range(0, len(fav_entry)):
