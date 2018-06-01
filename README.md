@@ -22,5 +22,9 @@
 * 打开app前要把scrape.py导出的sql脚本放到：存储卡/Android/data/com.toolkit.zhihufav/files/fav.sql
 * 在回答详情页点击标题可以查找同问题下收藏的其他回答；双击标题则查找已收藏的该答主其他回答
 ### 屏幕截图
-* （收藏夹及其内容旨在演示…侵删）  
+* 示例收藏内容分别来自（求生欲很强）：  
+https://www.zhihu.com/question/28891984/answer/49423495  
+https://www.zhihu.com/question/28891984/answer/49989294  
+https://www.zhihu.com/question/29896218/answer/157398073  
+https://www.zhihu.com/question/40522110/answer/269795931    
 ![ui](demo/ui.png) ![ui](demo/ui_night.png)
