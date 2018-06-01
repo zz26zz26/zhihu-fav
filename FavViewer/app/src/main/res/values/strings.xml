@@ -1,0 +1,69 @@
+<resources>
+    <string name="app_name">知识收藏夹</string>
+    <string name="title_activity_content">收藏夹内容</string>
+    <string name="main_search">搜索</string>
+    <string name="main_search_hint">搜索结果筛选工具&#160;&#160;&#160;>></string>
+    <string name="main_filter">筛选</string>
+    <string name="filter_type">类别：</string>
+    <string name="filter_sort">排序：</string>
+    <string name="filter_field">搜索：</string>
+    <string name="filter_other">其他：</string>
+    <string name="type_article">文章</string>
+    <string name="type_answer">回答</string>
+    <string name="sort_asc">升序</string>
+    <string name="sort_desc">降序</string>
+    <string name="field_title">问题标题</string>
+    <string name="field_folder">收藏分类</string>
+    <string name="field_name">作者名称</string>
+    <string name="field_revision">编辑时间</string>
+    <string name="field_content">正文内容</string>
+    <string name="contain_image">包含图片</string>
+    <string name="contain_video">包含视频</string>
+    <string name="dialog_ok">确认</string>
+    <string name="dialog_reset">重置</string>
+    <string name="info_divider">&#160;·&#160;</string>
+    <string name="search_more_result">加载中 %1$d%%</string>
+    <string name="search_no_more_result">没有更多结果</string>
+    <string name="search_no_result">没有找到结果</string>
+    <string name="search_last_result">已到达最后一个结果</string>
+    <string name="search_result_index">第 (%1$d / %2$d) 个结果</string>
+    <string name="search_result_count">共找到 %1$d 个结果</string>
+    <string name="content_menu">菜单</string>
+    <string name="content_refresh">刷新</string>
+    <string name="content_search">查找文本</string>
+    <string name="content_search_hint">输入要查找的文本</string>
+    <string name="content_text_size">字体大小</string>
+    <string name="size_small">小</string>
+    <string name="size_large">大</string>
+    <string name="open_with">用其他应用打开</string>
+    <string name="copy_link">复制链接</string>
+    <string name="link_copied">已复制链接：%1$s</string>
+    <string name="no_same_title">此问题只收藏了这一个答案</string>
+    <string name="no_same_user">没有收藏该用户的其他回答</string>
+    <string name="no_same_date">同一天编辑的仅收藏了此项</string>
+    <string name="night_mode">夜间模式</string>
+    <string name="stop_night_mode">取消夜间模式</string>
+    <string name="content_save_image">保存图片</string>
+    <string name="content_saved">已保存文件：%1$s</string>
+    <string name="content_not_saved">无法保存此文件</string>
+    <string name="external_storage">外部存储</string>
+    <string name="filter_no_select_hint">全不选时搜索结果和全选时一样的…</string>
+
+
+    <!--以下可在代码中使用R.id.item_name来引用-->
+    <item name="tag_theme" type="id" />
+    <item name="web_tag_url" type="id" />
+    <item name="web_tag_mode" type="id" />
+    <item name="web_tag_index" type="id" />
+    <item name="web_tag_scroll" type="id" />
+    <item name="web_tag_in_html" type="id" />
+    <item name="web_tag_fragment" type="id" />
+
+    <!--以下可在代码中使用R.attr.attr_name来引用-->
+    <!--若在style.xml的主题中有定义，还可在布局文件中使用?attr/attr_name引用-->
+    <attr name="list_divider" format="color|reference" />
+    <attr name="toolbar_divider" format="color|reference" />
+    <attr name="menu_night_mode_text" format="string|reference" />
+    <attr name="popup_filter_background" format="color|reference" />
+    <attr name="popup_overflow_background" format="color|reference" />
+</resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+
+    <size android:height="8dp"/>
+    <!--强行黄金分割 emm..-->
+    <gradient android:centerY="0.382"
+        android:startColor="@color/item_shadow"
+        android:centerColor="@color/window_background_night"
+        android:endColor="@color/window_background_night"
+        android:angle="270"/>
+</shape>

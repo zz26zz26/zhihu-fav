@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<android.support.design.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/content_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
+    tools:context="com.toolkit.zhihufav.ContentActivity">
+
+    <android.support.design.widget.AppBarLayout
+        android:id="@+id/app_bar"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/app_bar_height"
+        android:fitsSystemWindows="true"
+        android:theme="@style/AppTheme.AppBarOverlay">
+
+        <!--TitleTextAppearance取值就是Toolbar的样式，collapse不弄夜间是纯白-->
+        <!--collapsedTitleTextAppearance控制了Toolbar的文本样式，设置后者无效-->
+        <android.support.design.widget.CollapsingToolbarLayout
+            android:id="@+id/toolbar_layout"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fitsSystemWindows="true"
+            app:contentScrim="?attr/colorPrimary"
+            app:expandedTitleGravity="center_vertical"
+            app:expandedTitleMarginBottom="16dp"
+            app:expandedTitleMarginStart="16dp"
+            app:expandedTitleMarginTop="?attr/actionBarSize"
+            app:expandedTitleTextAppearance="@style/TextAppearance.Toolbar.Title"
+            app:layout_scrollFlags="scroll|exitUntilCollapsed|snap">
+
+            <TextView
+                android:id="@+id/textView_toolbarLayout"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_marginBottom="8dp"
+                android:layout_marginEnd="8dp"
+                android:layout_marginStart="16dp"
+                android:layout_marginTop="?attr/actionBarSize"
+                android:gravity="center_vertical"
+                android:paddingTop="8dp"
+                android:text="Title"
+                android:textAppearance="@style/TextAppearance.Toolbar.Title"
+                app:layout_collapseMode="parallax" />
+
+            <android.support.v7.widget.Toolbar
+                android:id="@+id/toolbar_content"
+                android:layout_width="match_parent"
+                android:layout_height="?attr/actionBarSize"
+                app:contentInsetStartWithNavigation="0dp"
+                app:layout_collapseMode="pin"
+                app:popupTheme="@style/AppTheme.PopupOverlay">
+
+            </android.support.v7.widget.Toolbar>
+
+
+        </android.support.design.widget.CollapsingToolbarLayout>
+
+    </android.support.design.widget.AppBarLayout>
+
+    <!--CoordinatorLayout直接子级且实现NestedScrollingChild接口，设layout_behavior才好用-->
+    <!--NestedScrollView包裹ViewPager时，要在代码中设置setFillViewport(true)-->
+    <android.support.v4.widget.NestedScrollView
+        xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:tools="http://schemas.android.com/tools"
+        android:id="@+id/scroll_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scrollbars="horizontal|vertical"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+        <!--仅NestedScrollView和RecyclerView实现了接口，但别的也要设置不然就把ToolBar覆盖了-->
+        <!--自定义Behavior时需要在单独的文件中重写一个类，不能作为内部类-->
+
+        <android.support.v4.view.ViewPager
+            android:id="@+id/container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <!--Pager的内容不是在此重用，加了还平白多一个Child-->
+            <!--<include layout="@layout/fragment_content" />-->
+
+        </android.support.v4.view.ViewPager>
+
+    </android.support.v4.widget.NestedScrollView>
+
+</android.support.design.widget.CoordinatorLayout>

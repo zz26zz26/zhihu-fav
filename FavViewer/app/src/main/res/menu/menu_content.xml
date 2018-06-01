@@ -1,0 +1,49 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:context="com.toolkit.zhihufav.ContentActivity">
+    <item
+        android:id="@+id/content_menu_entry"
+        android:icon="@drawable/ic_more_vert_white_24dp"
+        android:orderInCategory="100"
+        android:title="@string/content_menu"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/content_refresh"
+        android:orderInCategory="101"
+        android:title="@string/content_refresh"
+        android:visible="false" />
+    <item
+        android:id="@+id/content_copy_link"
+        android:orderInCategory="102"
+        android:title="@string/copy_link"
+        android:visible="false" />
+    <item
+        android:id="@+id/content_search"
+        android:icon="@drawable/ic_search_white_24dp"
+        android:orderInCategory="103"
+        android:title="@string/content_search"
+        android:visible="false"
+        app:actionViewClass="android.widget.SearchView"
+        app:showAsAction="collapseActionView" />
+    <item
+        android:id="@+id/content_text_size"
+        android:orderInCategory="104"
+        android:title="@string/content_text_size"
+        android:visible="false" />
+    <item
+        android:id="@+id/content_save"
+        android:orderInCategory="105"
+        android:title="@string/content_save_image"
+        android:visible="false" />
+    <item
+        android:id="@+id/content_night_mode"
+        android:orderInCategory="106"
+        android:title="@string/night_mode"
+        android:visible="false" />
+    <item
+        android:id="@+id/content_open_with"
+        android:orderInCategory="107"
+        android:title="@string/open_with"
+        android:visible="false" />
+</menu>

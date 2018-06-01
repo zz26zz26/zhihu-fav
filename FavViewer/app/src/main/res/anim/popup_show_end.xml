@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<set xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--<alpha-->
+        <!--android:duration="100"-->
+        <!--android:fromAlpha="0.0"-->
+        <!--android:toAlpha="1.0" />-->
+
+    <!--Y=100%p指父控件的100%即底部，不加就是指自身-->
+    <translate
+        android:interpolator="@android:anim/decelerate_interpolator"
+        android:fromXDelta="100%p"
+        android:toXDelta="0"
+        android:duration="200" />
+
+</set>

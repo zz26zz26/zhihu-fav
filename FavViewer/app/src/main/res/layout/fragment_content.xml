@@ -1,0 +1,33 @@
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    tools:context="com.toolkit.zhihufav.PageFragment">
+
+    <WebView
+        android:id="@+id/webView_section"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+</LinearLayout>
+
+
+<!--NestedScrollView放Fragment里能正确地同标题栏滚动，若包在ViewPager外面需另外设置-->
+<!--但放Fragment里使WebView高到包含所有内容，Nested处理滚动-->
+<!--还有问题如：图片放大后无限高、视频看不了、查找高亮定不了位；图片还可以开新窗口，查找不行-->
+<!--若设WebView高为match_parent则Nested高等于显示过的内容的最大高度，即放大过图片，网页就超长了-->
+<!--<android.support.v4.widget.NestedScrollView-->
+    <!--xmlns:android="http://schemas.android.com/apk/res/android"-->
+    <!--xmlns:tools="http://schemas.android.com/tools"-->
+    <!--android:layout_width="match_parent"-->
+    <!--android:layout_height="match_parent"-->
+    <!--android:scrollbars="horizontal|vertical"-->
+    <!--tools:context="com.toolkit.zhihufav.ViewPagerAdapter$PageFragment>-->
+        <!--<WebView-->
+        <!--android:id="@+id/webView_section"-->
+        <!--android:layout_width="match_parent"-->
+        <!--android:layout_height="wrap_content" />-->
+
+<!--</android.support.v4.widget.NestedScrollView>-->

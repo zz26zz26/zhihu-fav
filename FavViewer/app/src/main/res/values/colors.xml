@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#3f51b5</color>
+    <color name="colorPrimaryDark">#303f9f</color>
+    <color name="colorAccent">#3d5afe</color>
+    <color name="window_shadow">#20000000</color>
+    <color name="item_shadow">#3a1a1a1a</color>
+
+    <color name="window_background">#feee</color>
+    <color name="transparent_background">#0eee</color>
+    <color name="item_background">#fff</color>
+
+    <color name="window_background_night">#ff303030</color> <!--抄自主题预设-->
+    <color name="transparent_background_night">#00303030</color> <!--夜间Primary是212121-->
+    <color name="item_background_night">#2a2a2a</color>
+    <color name="color_accent_night">#a9a9a9</color>
+    <color name="text_color_primary_night">#c0c0c0</color>
+    <color name="text_color_secondary_night">#808080</color>
+</resources>

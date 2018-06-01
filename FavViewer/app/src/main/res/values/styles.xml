@@ -1,0 +1,83 @@
+<resources>
+
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+        <!-- Customize your theme here. -->
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:itemBackground">@color/item_background</item>
+        <item name="list_divider">@drawable/list_divider</item>
+        <item name="toolbar_divider">@drawable/toolbar_divider</item>
+        <item name="popup_filter_background">@drawable/popup_bg</item>
+        <item name="popup_overflow_background">@drawable/popup_menu_bg</item>
+        <item name="menu_night_mode_text">@string/night_mode</item>
+
+        <!--允许ActionMode覆盖在Toolbar上，防止Activity顶部出现两个上下文操作栏-->
+        <item name="windowActionModeOverlay">true</item>
+
+        <!--布局根元素要设置android:fitsSystemWindows="true"才能不让内容顶到状态栏上-->
+        <!--4.4时若只有Toolbar则只应在Toolbar上添加这个属性，不然无效-->
+        <item name="android:windowTranslucentStatus">true</item>
+    </style>
+
+    <style name="AppTheme.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+    </style>
+
+    <style name="AppTheme.Night" parent="Theme.AppCompat.NoActionBar">
+        <!--Theme.AppCompat.DayNight的Night就是用的这个，但有ActionBar-->
+        <!--?android:attr/popupBackground，默认透明，其他弹窗可重用-->
+        <!--?android:attr/itemBackground，指定标题栏溢出菜单项背景色-->
+        <!--?android:attr/textColor指定溢出菜单文字颜色 ..Primary和actionMenuTextColor不行-->
+        <!--用PopupMenu后不设置那个颜色也行，但即使改了android:popupMenuStyle右边还是贴屏幕-->
+        <!--现背景抄自Base.Widget.AppCompat.ListPopupWindow，它有android:popupBackground但用不了-->
+        <item name="colorAccent">@color/color_accent_night</item>
+        <item name="android:textColorPrimary">@color/text_color_primary_night</item>
+        <item name="android:textColorSecondary">@color/text_color_secondary_night</item>
+        <item name="android:windowBackground">@color/window_background_night</item>
+        <item name="android:itemBackground">@color/item_background_night</item>
+        <item name="list_divider">@drawable/list_divider_night</item>
+        <item name="toolbar_divider">@drawable/toolbar_divider_night</item>
+        <item name="popup_filter_background">@drawable/popup_bg_night</item>
+        <item name="popup_overflow_background">@drawable/popup_menu_bg_night</item>
+        <item name="menu_night_mode_text">@string/stop_night_mode</item>
+
+        <item name="windowActionModeOverlay">true</item>
+        <item name="android:windowTranslucentStatus">true</item>
+    </style>
+
+    <style name="AppTheme.AppBarOverlay" parent="ThemeOverlay.AppCompat.Dark.ActionBar" />
+
+    <!--溢出菜单样式(.Dark是夜间)，设itemBackground边缘就圆了，然Toolbar.setPopupTheme不立即生效-->
+    <style name="AppTheme.PopupOverlay" parent="ThemeOverlay.AppCompat.Light">
+        <item name="android:itemBackground">?android:attr/selectableItemBackground</item>
+    </style>
+
+    <!--以下为自定义PopupMenu样式，就是视为溢出菜单，改变一下位置(似乎边距改了没用)-->
+    <!--<style name="popup_menu_overflow" parent="Widget.AppCompat.Light.PopupMenu.Overflow" />-->
+    <!--<style name="popup_menu_overflow_night" parent="Widget.AppCompat.PopupMenu.Overflow" />-->
+
+    <!--原是AppCompat的私有属性，指示标题栏默认文本样式，强行搬来方便统一管理-->
+    <style name="TextAppearance.Toolbar.Title" parent="TextAppearance.Widget.AppCompat.Toolbar.Title" />
+
+
+    <!--以下用于弹窗之类的动画设置-->
+    <style name="popup_anim_bottom" parent="android:Animation">
+        <item name="android:windowEnterAnimation">@anim/popup_show_bottom</item>
+        <item name="android:windowExitAnimation">@anim/popup_hide_bottom</item>
+    </style>
+
+    <style name="popup_anim_end" parent="android:Animation">
+        <item name="android:windowEnterAnimation">@anim/popup_show_end</item>
+        <item name="android:windowExitAnimation">@anim/popup_hide_end</item>
+    </style>
+
+    <style name="popup_anim_alpha" parent="android:Animation">
+        <item name="android:windowEnterAnimation">@anim/popup_show_alpha</item>
+        <item name="android:windowExitAnimation">@anim/popup_hide_alpha</item>
+    </style>
+
+</resources>

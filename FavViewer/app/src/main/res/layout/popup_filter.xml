@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="wrap_content"
+    android:layout_height="match_parent"
+    android:background="?attr/popup_filter_background"
+    android:orientation="vertical">
+
+    <ScrollView
+        android:id="@+id/scrollView_filter"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="2dp"
+                android:background="@color/window_shadow"
+                android:padding="8dp"
+                android:text="@string/filter_type"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="16sp" />
+
+            <!--这里面的两个选框定死了宽度(ems)，则之后的各种框只需设置layout_weight填满即可-->
+            <LinearLayout
+                android:id="@+id/linearLayout_type"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:columnCount="2"
+                android:paddingEnd="8dp"
+                android:paddingStart="2dp">
+
+                <CheckBox
+                    android:id="@+id/checkBox_article"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="2dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_weight="1"
+                    android:ems="7"
+                    android:padding="2dp"
+                    android:tag="type_article"
+                    android:text="@string/type_article" />
+
+                <CheckBox
+                    android:id="@+id/checkBox_answer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="2dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_weight="1"
+                    android:ems="7"
+                    android:padding="2dp"
+                    android:tag="type_answer"
+                    android:text="@string/type_answer" />
+            </LinearLayout>
+
+            <android.support.v7.widget.GridLayout
+                android:id="@+id/gridLayout_folder"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingEnd="8dp"
+                android:paddingStart="2dp"
+                app:columnCount="2">
+
+                <!--<CheckBox-->
+                    <!--android:layout_width="wrap_content"-->
+                    <!--android:layout_height="wrap_content"-->
+                    <!--android:layout_marginBottom="2dp"-->
+                    <!--android:layout_marginStart="4dp"-->
+                    <!--android:ellipsize="end"-->
+                    <!--android:ems="7"-->
+                    <!--android:maxLines="1"-->
+                    <!--android:padding="2dp"-->
+                    <!--android:text="十八字以内无图回答，犀利精辟短小而精干"-->
+                    <!--app:layout_columnWeight="1" />-->
+
+                <!--<CheckBox-->
+                    <!--android:layout_width="wrap_content"-->
+                    <!--android:layout_height="wrap_content"-->
+                    <!--android:layout_marginBottom="2dp"-->
+                    <!--android:layout_marginStart="4dp"-->
+                    <!--android:ellipsize="end"-->
+                    <!--android:ems="7"-->
+                    <!--android:maxLines="1"-->
+                    <!--android:padding="2dp"-->
+                    <!--android:text="一本正经地扯淡 "-->
+                    <!--app:layout_columnWeight="1" />-->
+
+                <CheckBox
+                    android:id="@+id/checkBox"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="2dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="2dp"
+                    android:tag="folder_知识-阴毛"
+                    android:visibility="gone"
+                    app:layout_columnWeight="1" />
+                <!--包括不可见的都要设置layout_columnWeight，不然布局会有问题-->
+            </android.support.v7.widget.GridLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="2dp"
+                android:layout_marginTop="4dp"
+                android:background="@color/window_shadow"
+                android:padding="8dp"
+                android:text="@string/filter_sort"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="16sp" />
+
+            <RadioGroup
+                android:id="@+id/radioGroup_order"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingEnd="8dp"
+                android:paddingStart="2dp">
+
+                <RadioButton
+                    android:id="@+id/radioButton_asc"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="2dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_weight="1"
+                    android:padding="2dp"
+                    android:tag="asc"
+                    android:text="@string/sort_asc" />
+
+                <RadioButton
+                    android:id="@+id/radioButton_desc"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="2dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_weight="1"
+                    android:padding="2dp"
+                    android:tag="desc"
+                    android:text="@string/sort_desc" />
+
+            </RadioGroup>
+
+            <android.support.v7.widget.GridLayout
+                android:id="@+id/gridLayout_sort"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingEnd="8dp"
+                android:paddingStart="2dp"
+                app:columnCount="2">
+
+                <RadioButton
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="2dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="2dp"
+                    android:tag="title"
+                    android:text="@string/field_title"
+                    app:layout_columnWeight="1" />
+
+                <RadioButton
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="2dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="2dp"
+                    android:tag="folder"
+                    android:text="@string/field_folder"
+                    app:layout_columnWeight="1" />
+
+                <RadioButton
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="2dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="2dp"
+                    android:tag="name"
+                    android:text="@string/field_name"
+                    app:layout_columnWeight="1" />
+
+                <RadioButton
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="2dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="2dp"
+                    android:tag="revision"
+                    android:text="@string/field_revision"
+                    app:layout_columnWeight="1" />
+
+            </android.support.v7.widget.GridLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="2dp"
+                android:layout_marginTop="4dp"
+                android:background="@color/window_shadow"
+                android:padding="8dp"
+                android:text="@string/filter_field"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="16sp" />
+
+            <android.support.v7.widget.GridLayout
+                android:id="@+id/gridLayout_field"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingEnd="8dp"
+                android:paddingStart="2dp"
+                app:columnCount="2">
+
+                <CheckBox
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="2dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="2dp"
+                    android:tag="title"
+                    android:text="@string/field_title"
+                    app:layout_columnWeight="1" />
+
+                <CheckBox
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="2dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="2dp"
+                    android:tag="content"
+                    android:text="@string/field_content"
+                    app:layout_columnWeight="1" />
+
+                <CheckBox
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="2dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="2dp"
+                    android:tag="name"
+                    android:text="@string/field_name"
+                    app:layout_columnWeight="1" />
+
+                <CheckBox
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="2dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="2dp"
+                    android:tag="revision"
+                    android:text="@string/field_revision"
+                    app:layout_columnWeight="1" />
+
+            </android.support.v7.widget.GridLayout>
+
+            <TextView
+                android:id="@+id/textView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="2dp"
+                android:layout_marginTop="4dp"
+                android:background="@color/window_shadow"
+                android:padding="8dp"
+                android:text="@string/filter_other"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="16sp" />
+
+            <android.support.v7.widget.GridLayout
+                android:id="@+id/gridLayout_other"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:paddingEnd="8dp"
+                android:paddingStart="2dp"
+                app:columnCount="2">
+
+                <CheckBox
+                    android:id="@+id/checkBox_image"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="2dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="2dp"
+                    android:tag="contain_image"
+                    android:text="@string/contain_image"
+                    app:layout_columnWeight="1" />
+
+                <CheckBox
+                    android:id="@+id/checkBox_video"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="2dp"
+                    android:layout_marginStart="4dp"
+                    android:padding="2dp"
+                    android:tag="contain_video"
+                    android:text="@string/contain_video"
+                    app:layout_columnWeight="1" />
+
+            </android.support.v7.widget.GridLayout>
+        </LinearLayout>
+    </ScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/button_filter_reset"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="6dp"
+            android:layout_weight="1"
+            android:background="?android:attr/selectableItemBackground"
+            android:text="@string/dialog_reset"
+            android:textAlignment="center"
+            android:textColor="?android:attr/textColorPrimary" />
+
+        <Button
+            android:id="@+id/button_filter_ok"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="6dp"
+            android:layout_weight="1"
+            android:background="?android:attr/selectableItemBackground"
+            android:text="@string/dialog_ok"
+            android:textAlignment="center"
+            android:textColor="?android:attr/textColorPrimary" />
+    </LinearLayout>
+
+</LinearLayout>
