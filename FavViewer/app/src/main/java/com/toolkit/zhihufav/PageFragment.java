@@ -79,8 +79,8 @@ public class PageFragment extends Fragment {
         private int initialPointerId;  // 防止多点触控视为滑动，然后造成ViewPager闪退
         private long touchDownTime, touchUpTime;
         private float touchStartX, touchStartY, lastMotionY, lastCenterY, initialTop;
-        private boolean inNestedScroll, inNestedFling;
-        private VelocityTracker tracker;
+        private boolean inNestedScroll;
+//        private VelocityTracker tracker;
 
         private float getYPointerCenter(MotionEvent event) {
             int n = event.getPointerCount();
@@ -102,9 +102,9 @@ public class PageFragment extends Fragment {
             if (dragDirection == 1) {  // 这里调onTouchEvent则横滑画面会抖动，且隔壁网页能竖滑(横滑闪退)
                 if (MotionEvent.ACTION_UP != action) {  // 第一个就是UP说明以后也不会有事件了
                     ViewPager pager = (ViewPager) webView.getParent().getParent();  // 不判断两指闪退
-                    webView.requestDisallowInterceptTouchEvent(false);  // 它的onIntercept要x>2y才拦
-                    pager.getParent().requestDisallowInterceptTouchEvent(true);  // 等于给onTouchEvent
-                    Log.d(TAG, "ViewPager intercept");
+                    webView.requestDisallowInterceptTouchEvent(false);  // 只有这句可能给Nested拦截
+                    pager.getParent().requestDisallowInterceptTouchEvent(true);  // 这样确保给ViewPager
+                    Log.d(TAG, "ViewPager intercept");  // 其onIntercept要x>2y才拦，onTouchEvent是x>y
                 }
             } else if (dragDirection == 2) {
                 // 在标题栏展开完时(网页必已在顶)，手指下滑留WebView(边缘滑动发光)，但上滑要给(收标题栏)
@@ -115,10 +115,10 @@ public class PageFragment extends Fragment {
                 ContentActivity activity = (ContentActivity) getActivity();
                 MotionEvent parentEvent = MotionEvent.obtain(event.getDownTime(), event.getEventTime(), 0, 0, 0, 0);
                 parentEvent.setAction(action >= MotionEvent.ACTION_POINTER_DOWN ? MotionEvent.ACTION_MOVE : action);
-                // 多指时把结果转为单指事件给父级，则POINTER_DOWN/UP都可视为MOVE
+                // 多指时把结果转为单指事件给父级，则POINTER_DOWN和POINTER_UP都可视为MOVE
                 float movY = getYPointerCenter(event) - lastCenterY;  // tracker用加速度预测速度，减速就可能使速度变号
                 float velY = MotionEvent.ACTION_MOVE == action ? movY : 0;  // POINTER_DOWN之类就只改Center不传父级
-//                Log.d(TAG, "NestedScroll         @cy = " + (lastCenterY + movY) + ", y = " + (lastMotionY + velY));
+                //Log.d(TAG, "NestedScroll         @cy = " + (lastCenterY + movY) + ", y = " + (lastMotionY + velY));
                 int toolbarState = activity.getToolbarState();  // 定了direction就不用thresh了
                 if (toolbarState == ContentActivity.TOOLBAR_INTERMEDIATE ||  // 伸缩中显然要给标题栏
                         toolbarState == ContentActivity.TOOLBAR_EXPANDED && velY < 0 ||
@@ -126,35 +126,22 @@ public class PageFragment extends Fragment {
                     if (!inNestedScroll && MotionEvent.ACTION_UP != action) {
                         parentEvent.setAction(MotionEvent.ACTION_DOWN);  // DOWN可重置积累的下滑距离
                         Log.d(TAG, "NestedScroll DOWN    @vy = " + velY);  // 但CANCEL自己后就不动了
-//                        if (inNestedFling)
-                            event.setAction(MotionEvent.ACTION_CANCEL);  // 可取消长按
-//                        inNestedFling = false;
                     }
-//                    tracker.computeCurrentVelocity(1000);
-//                    if (!inNestedFling && tracker.getYVelocity() < -1000) {
-//                        event.setAction(MotionEvent.ACTION_DOWN);  // TODO 第一次DOWN回来即可？然后下面的else里就不必管event了？
-//                        inNestedFling = true;
-//                    } else if (inNestedFling) {
-//                        event.setAction(MotionEvent.ACTION_CANCEL);
-//                        inNestedFling = false;
-//                    }
+                    event.setAction(MotionEvent.ACTION_CANCEL);  // 可取消长按；4.4在CANCEL后仍会响应MOVE
                     parentEvent.setLocation(event.getX(), lastMotionY + velY);
                     scroller.onTouchEvent(parentEvent);  // dispatch流程多比较卡，还可能循环传递事件
                     inNestedScroll = true;
                 } else {
                     // 不必判断(velY != 0)，手指不动vel都会振荡
-                    // 停止分发给nested，留给webView自己，第一次停止要用CANCEL通知nested
+                    // 停止分发给Nested，留给WebView自己，第一次停止要用CANCEL通知Nested
                     // 注意第一次就是UP就别改，不然标题栏折叠+网页在顶部时快速下滑，此时DOWN未传给Nested…
                     // 而之后的第一个MOVE便超过阈值传来作为Nested的DOWN…
-                    // 此时若下一个就是UP，然后还给webView一个DOWN就会引发长按
-                    // TODO 多指展开后松开一根触发长按，再造个POINTER_DOWN给网页？
+                    // 此时若下一个就是UP，然后还给WebView一个DOWN就会引发长按
                     if (inNestedScroll && MotionEvent.ACTION_UP != action) {
                         parentEvent.setAction(MotionEvent.ACTION_CANCEL);
                         scroller.onTouchEvent(parentEvent);
                         Log.d(TAG, "NestedScroll CANCEL  @vy = " + velY);
-//                        if (!inNestedFling)
-                            event.setAction(MotionEvent.ACTION_DOWN);  // 之前CANCEL后要再DOWN才会动
-//                        inNestedFling = true;
+                        event.setAction(MotionEvent.ACTION_DOWN);  // 5.0若之前CANCEL后要再DOWN才会动
                     }
                     inNestedScroll = false;
                 }
@@ -185,11 +172,11 @@ public class PageFragment extends Fragment {
             float deltaY = event.getRawY() - touchStartY;  // Raw只能取Index=0的手指位置
             float thresh = 8 * getResources().getDisplayMetrics().density;  // 8dp->px
 
-            String[] s = {"DOWN", "UP", "MOVE", "CANCEL", "OUTSIDE", "POINTER_DOWN", "POINTER_UP"};
-            if (tracker != null) tracker.computeCurrentVelocity(1000);
-            if (action != MotionEvent.ACTION_MOVE)
-                Log.d(TAG, "action = " + s[action] + (action < 5 && id < 1 ? "" : " #" + id) +
-                        ". vy = " + (tracker == null ? 0 : tracker.getYVelocity(id)) + ". y = " + (event.getY(event.getActionIndex()) + top));
+//            String[] s = {"DOWN", "UP", "MOVE", "CANCEL", "OUTSIDE", "POINTER_DOWN", "POINTER_UP"};
+//            if (tracker != null) tracker.computeCurrentVelocity(1000);
+//            if (action != MotionEvent.ACTION_MOVE)
+//                Log.d(TAG, "action = " + s[action] + (action < 5 && id < 1 ? "" : " #" + id) +
+//                        ". vy = " + (tracker == null ? 0 : tracker.getYVelocity(id)) + ". y = " + (event.getY(event.getActionIndex()) + top));
 //            else for (int i = 0, n = event.getPointerCount(); i < n; i++)
 //                Log.d(TAG, "action = MOVE" + (n < 2 && id < 1 ? "" : " #" + event.getPointerId(i)) +
 //                        ". vy = " + (tracker == null ? 0 : tracker.getYVelocity(event.getPointerId(i))) + ". y = " + (event.getY(i) + top));
@@ -222,9 +209,9 @@ public class PageFragment extends Fragment {
                     initialPointerId = event.getPointerId(0);
                     initialTop = top;
                     dragDirection = 0;
-                    inNestedScroll = inNestedFling = false;
+                    inNestedScroll = false;
                     lastMotionY = lastCenterY = event.getY();
-                    if (tracker == null) tracker = VelocityTracker.obtain();
+//                    if (tracker == null) tracker = VelocityTracker.obtain();
                     webView.requestDisallowInterceptTouchEvent(true);  // 同时会通知到所有父级
                     break;  // 复制/图片/视频页全程阻止父级拦截(防换页/出标题)
 
@@ -235,12 +222,12 @@ public class PageFragment extends Fragment {
                         dragDirection = 2;    // 图片模式也用此判断是否为点击(之前只看位移不看路程)
                     if (dragDirection == 0)
                         lastMotionY = lastCenterY = event.getY();  // 放前俩if之后，即没定方向才改(此时必为单指)
-                    if (tracker != null) {
-                        MotionEvent v_event = MotionEvent.obtain(event);  // 要单独弄，不然滑动会跳
-                        v_event.offsetLocation(0, top - initialTop);  // 计算用的相对坐标在标题栏伸缩时不变
-                        tracker.addMovement(v_event);
-                        v_event.recycle();
-                    }
+//                    if (tracker != null) {
+//                        MotionEvent v_event = MotionEvent.obtain(event);  // 要单独弄，不然滑动会跳
+//                        v_event.offsetLocation(0, top - initialTop);  // 计算用的相对坐标在标题栏伸缩时不变
+//                        tracker.addMovement(v_event);
+//                        v_event.recycle();
+//                    }
                     break;
 
                 case MotionEvent.ACTION_POINTER_DOWN:
@@ -257,7 +244,7 @@ public class PageFragment extends Fragment {
                                     if (result.getExtra().startsWith("http") &&   // 文件不行
                                             currentTime - touchDownTime < 500 &&  // 长按不行(ViewConfiguration.getLongPressTimeout()
                                             currentTime - touchDownTime > 10 &&   // 机按不行(人超轻触可4ms但不自然)
-                                            currentTime - touchUpTime > 300) {    // 双击不行(免得点开js改src后没下成的图)
+                                            currentTime - touchUpTime > 300) {    // 双击不行(免得单击后js改src还没下完就开)
                                         mLoadImageUrl = result.getExtra();
                                         loadImagePage(webView, mLoadImageUrl);
                                         currentTime = 0;  // 防止点开图片后300ms内再点一次就放大
@@ -284,15 +271,16 @@ public class PageFragment extends Fragment {
                 consumed = dispatchNestedScroll(webView, event);  // 放tracker.recycle之前
             }  // 里面修改event的action没事，因为下面用的action是最开始的缓存
 
-            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-                if (tracker != null) {
-                    tracker.recycle();
-                    tracker = null;
-                }
-            }
+//            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+//                if (tracker != null) {
+//                    tracker.recycle();
+//                    tracker = null;
+//                }
+//            }
 
             return consumed;  // false表示没有消费事件，仍向下传递(才能点击/滑动)
         }
+
     }
 
     private class webViewClient extends WebViewClient {
@@ -462,6 +450,7 @@ public class PageFragment extends Fragment {
             }
             mOnCreate = false;  // 放在使用之后啊…
         }
+
     }
 
     private static class RawImageUrlGetter extends AsyncTask<String, Void, String> {
@@ -580,15 +569,6 @@ public class PageFragment extends Fragment {
                 Toast.makeText(activity, msg, extra.isEmpty() ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
             }
         }
-
-//            @Override
-//            protected void onCancelled() {
-//                super.onCancelled();
-//                ContentActivity activity = ContentActivity.getReference();
-//                if (activity != null && contentLength < 0) {
-//                    Toast.makeText(activity, "网络不畅啊...", Toast.LENGTH_SHORT).show();
-//                }
-//            }
 
     }
 
@@ -831,7 +811,7 @@ public class PageFragment extends Fragment {
         settings.setSupportZoom(true);          // 默认开
         settings.setBuiltInZoomControls(true);  // 默认关
         settings.setDisplayZoomControls(false); // 开上面默认开
-        settings.setJavaScriptEnabled(false);   // 视频以外不给用
+        settings.setJavaScriptEnabled(false);   // 图片不给用
         webView.setTag(R.id.web_tag_url, url);
         webView.loadDataWithBaseURL(url, html, "text/html", "utf-8", null);
 
@@ -938,12 +918,12 @@ public class PageFragment extends Fragment {
         webView.setOnTouchListener(new onTouchListener());
         webView.setBackgroundColor(sBackColor);  // 防夜间快速换页时闪过白色，xml里WebView的background没用
 //        WebSettings settings = webView.getSettings();
+//        settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);  // 视频的js就要新的吧
 //        settings.setLoadsImagesAutomatically(false);  // 只加载页面文字，等切换到再图片
 //        //setBlockNetworkLoads还会尝试加载图片，然后请求被此拦截返回一个不能下载的图…不用js就改不了了
-//        settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);  // 图片换网址肯定也换了
 
 //        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-//            WebView.setWebContentsDebuggingEnabled(true);
+//            WebView.setWebContentsDebuggingEnabled(true);  // 可在桌面Chrome调试
 //        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             webView.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
@@ -986,7 +966,7 @@ public class PageFragment extends Fragment {
 
     @Override
     public void setUserVisibleHint(boolean isVisibleToUser) {
-        Log.w(TAG, "setUserVisibleHint #" + getArguments().getInt(ARG_POS) + " " + isVisibleToUser);
+//        Log.w(TAG, "setUserVisibleHint #" + getArguments().getInt(ARG_POS) + " " + isVisibleToUser);
         super.setUserVisibleHint(isVisibleToUser);  // 划走的页也会调用(VisibleToUser为false)
         if (isVisibleToUser) {  // CurrentItem那页触发时它在Activity中还没生成
             resumePageLoad();

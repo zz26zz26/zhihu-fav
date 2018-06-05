@@ -180,7 +180,7 @@ public class ContentActivity extends AppCompatActivity {
             }
         });
         onDisplayOptionsMenu(popupMenu.getMenu());
-//        popupMenu.show();  // 此菜单右边距不准确，且点击菜单项时没有动画效果(虽然系统的也没有)
+        //popupMenu.show();  // 此菜单右边距不准确，且点击菜单项时没有动画效果(虽然系统的也没有)
 
         // 为了解决菜单样式问题用自由度更大的PopupWindow再包裹一层…
         final View popupView = getLayoutInflater().inflate(R.layout.popup_overflow, null);
@@ -189,6 +189,7 @@ public class ContentActivity extends AppCompatActivity {
         popupWindow.setBackgroundDrawable(new ColorDrawable());
         popupWindow.setAnimationStyle(R.style.popup_anim_alpha);
         // 动态添加上面可见的菜单项，并绑定点击事件
+        ViewGroup container = (ViewGroup) ((ViewGroup) popupView).getChildAt(0);
         View.OnClickListener listener = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -196,9 +197,7 @@ public class ContentActivity extends AppCompatActivity {
                 popupMenu.getMenu().performIdentifierAction(v.getId(), 0);  // 调用上面的菜单项方法
             }
         };
-        int count = popupMenu.getMenu().size();
-        ViewGroup container = (ViewGroup) ((ViewGroup) popupView).getChildAt(0);
-        for (int i = 0; i < count; i++) {
+        for (int i = 0, n = popupMenu.getMenu().size(); i < n; i++) {
             MenuItem item = popupMenu.getMenu().getItem(i);
             if (item.isVisible()) {
                 Button button = (Button) getLayoutInflater().inflate(R.layout.overflow_item, null);
@@ -247,6 +246,7 @@ public class ContentActivity extends AppCompatActivity {
             color = ResourcesCompat.getColor(resources, typedValue.resourceId, null);
             mToolbarLayout.setContentScrimColor(color);
             mToolbarLayout.setBackgroundColor(color);
+            mAppBarLayout.setBackgroundColor(color);  // 4.4的透明状态栏靠这个改颜色
             theme.resolveAttribute(toolbar_text_color_id, typedValue, true);
             color = ResourcesCompat.getColor(resources, typedValue.resourceId, null);
             ((TextView) mToolbarLayout.findViewById(R.id.textView_toolbarLayout)).setTextColor(color);
@@ -255,13 +255,9 @@ public class ContentActivity extends AppCompatActivity {
             color = ResourcesCompat.getColor(resources, typedValue.resourceId, null);
             mToolbarLayout.setStatusBarScrimColor(color);
 
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {  // 4.4只能设为透明
                 theme.resolveAttribute(R.attr.colorPrimaryDark, typedValue, true);
                 getWindow().setStatusBarColor(resources.getColor(typedValue.resourceId));
-//                ObjectAnimator status_anim = ObjectAnimator.ofArgb(getWindow(), "statusBarColor",
-//                        getWindow().getStatusBarColor(), resources.getColor(typedValue.resourceId));
-//                status_anim.start();
             }
 
             theme.resolveAttribute(android.R.attr.itemBackground, typedValue, true);
@@ -332,7 +328,7 @@ public class ContentActivity extends AppCompatActivity {
         mAppBarLayout.addOnOffsetChangedListener(new AppBarLayout.OnOffsetChangedListener() {
             @Override
             public void onOffsetChanged(AppBarLayout appBarLayout, int verticalOffset) {
-                //Log.w("offsetChanged", "offset = " + verticalOffset);
+//                Log.w(TAG, "offsetChanged: " + verticalOffset + ", scrollY = " + getCurrentWebViewScrollPos());
                 int collapseOffset = mAppBarLayout.getTotalScrollRange();
                 if (verticalOffset >= 0)
                     mToolbarState = TOOLBAR_EXPANDED;   // 完全展开时offset为0
@@ -448,115 +444,6 @@ public class ContentActivity extends AppCompatActivity {
                 fastClickCount++;
             }
         });
-
-//        NestedScrollView scrollView = (NestedScrollView) findViewById(R.id.scroll_container);
-//        scrollView.setOnTouchListener(new View.OnTouchListener() {
-//            // 网页仅在起始页可能放弃阻止父级拦截(但也是MOVE后)，复制/图片/视频等全程由网页处理
-//            // 本View要滑动一段才开始拦截，遂收不到DOWN，只能从MOVE开始(毕竟滚动只需相对距离)
-//            // 拦截后就不会经过onInterceptTouch了，而是直接走onTouch(Event)
-//            // 但最大的问题就是DOWN拦不到显得滑动迟钝，尤其是快速滑动可能不响应
-//            private VelocityTracker tracker;
-//            private int dragDirection;  // 0不算拖动 1主要X轴(横向) 2主要Y轴(纵向)
-//            private float touchStartX, touchStartY;
-//            private boolean firstMove = true, firstInterceptForChild;
-//
-//            @Override
-//            public boolean onTouch(View v, MotionEvent event) {
-//                WebView webView = getCurrentWebView();
-//                if (webView == null) return false;
-//
-//                int action = event.getActionMasked();
-//                float deltaX = event.getRawX() - touchStartX;
-//                float deltaY = event.getRawY() - touchStartY;  // ViewConfiguration.get(..).getScaledTouchSlop()
-//                float thresh = 8 * getResources().getDisplayMetrics().density;  // 8dp->px 换页是16dp
-//                float velocityY = 0f;
-//                boolean consumed = false;
-//
-//                if (tracker == null)  // 收到事件不一定从DOWN开始
-//                    tracker = VelocityTracker.obtain();
-//
-//                if (firstMove && MotionEvent.ACTION_UP != action) {
-//                    tracker.clear();
-//                    tracker.addMovement(event);  // 后面的DOWN就不能有clear
-//                    action = MotionEvent.ACTION_DOWN;  // 不要影响实际的event
-//                    firstMove = false;
-//                }
-//
-//                String TAG = "nested_onTouch";
-//                String[] s = {"DOWN", "UP", "MOVE", "CANCEL", "OUTSIDE"};
-////                if (action != MotionEvent.ACTION_MOVE)
-//                    Log.w(TAG, "action = " + (action < 5 ? s[action] :
-//                            "POINTER_" + s[event.getActionMasked() - 5] + " #" + event.getActionIndex()) +
-//                            " @(" + (int) event.getRawX() + ", " + (int) event.getRawY() + ")");
-//
-//                switch (action) {
-//                    case MotionEvent.ACTION_DOWN:
-//                        touchStartX = event.getRawX();
-//                        touchStartY = event.getRawY();
-//                        dragDirection = 0;
-//                        firstInterceptForChild = true;
-//                        break;
-//
-//                    case MotionEvent.ACTION_MOVE:
-//                        tracker.addMovement(event);
-//                        tracker.computeCurrentVelocity(1000);
-//                        velocityY = tracker.getYVelocity();
-//                        if (dragDirection == 0) {   // 滑远又滑回来时不再白白消费thresh距离
-//                            if (Math.abs(deltaX) > Math.max(2 * thresh, Math.abs(deltaY)))
-//                                dragDirection = 1;  // ViewPager能立刻响应
-//                            else if (Math.abs(deltaY) > thresh)
-//                                dragDirection = 2;
-//                        }
-//                        break;
-//
-//                    case MotionEvent.ACTION_UP:
-//                    case MotionEvent.ACTION_CANCEL:
-//                        if (tracker != null) {
-//                            tracker.recycle();
-//                            tracker = null;
-//                        }
-//                        firstMove = true;
-//                        break;
-//                }
-//
-//                MotionEvent childEvent = MotionEvent.obtain(event);  // 防止影响自己的onTouchEvent
-//                if (dragDirection == 1) {  // 这里不写else if，上面刚改完就可以进来
-//                    consumed = true;       // 不要横竖一起动
-//                    if (firstInterceptForChild && MotionEvent.ACTION_UP != action) {
-//                        childEvent.setAction(MotionEvent.ACTION_DOWN);
-//                    }
-//                    mViewPager.onTouchEvent(childEvent);  // 给onIntercept要等x>2y才拦截
-//                    firstInterceptForChild = false;       // 给ViewPager后不会再要回来
-//                } else if (dragDirection == 2) {
-//                    // 在标题栏折叠完时(只看网页在顶)，要把手指上滑(dy<0)给WebView处理，但下滑不给(出标题栏)
-//                    // 在标题栏展开完时(网页必已在顶)，手指下滑给WebView(边缘滑动发光)，但上滑不给(收标题栏)
-//                    // 滑一段才能判断，此前别传给网页，否则顶部上滑在thresh内造成网页滑动，会使标题栏突然折叠
-//                    // 之前在网页处理拦截，若放弃阻止后再调用阻止父级拦截，事件还是只到父级，只能硬塞给网页处
-//                    if (mAppbarCollapsed && (deltaY < 0 && velocityY < 0 || webView.getScrollY() > 0) ||
-//                            mAppbarExpanded && deltaY > 0 && velocityY > 0) {  // 定了direction就不用thresh了
-//                        if (firstInterceptForChild && MotionEvent.ACTION_UP != action) {
-//                            childEvent.setAction(MotionEvent.ACTION_DOWN);  // 给网页以DOWN开始，不然不动
-//                        }
-//                        webView.onTouchEvent(childEvent);  // dispatch流程多比较卡
-//                        firstInterceptForChild = false;
-////                        if (mAppbarCollapsed && webView.getScrollY() > 0) {
-//                            consumed = true;  // 此时嵌套滑会被OffsetChange阻止(不让标题栏展开)
-////                        }                     // 下滑时距离将积累，直到滑到顶不被阻止时突然展开
-//                    } else {
-//                        if (!firstInterceptForChild) {
-//                            childEvent.setAction(MotionEvent.ACTION_CANCEL);  // 若CANCEL自己以后就不动了
-//                            webView.onTouchEvent(childEvent);  // 开始拦截时给网页CANCEL，如停止检测长按
-//                        }  // 用onTouchEvent绕过onTouch也防止网页接收CANCEL后又传递过来
-//                        firstInterceptForChild = true;
-//                    }
-//                }
-//                childEvent.recycle();
-//
-//                Log.w(TAG, "consumed=" + consumed + ". " +
-//                        "d=(" + (int) deltaX + ", " + (int) deltaY + ")" + ". vy=" + (int) velocityY);
-//                return consumed;  // 得让系统处理与appbar的嵌套滑动(嵌套滑不动的网页不会放弃给这里)
-//            }
-//        });
     }
 
     @Override
@@ -749,11 +636,22 @@ public class ContentActivity extends AppCompatActivity {
             }
         });
 
-        try {  // 长按查找的提交按钮时往前找
-            //View goButton = searchView.findViewById(R.id.search_go_btn);  // 用这返回null
-            Field fieldGoButton = searchView.getClass().getDeclaredField("mGoButton");
+        View goButton = null;  // 长按查找的提交按钮时往前找
+        try {  //View goButton = searchView.findViewById(R.id.search_go_btn);  // 用这返回null
+            Field fieldGoButton = searchView.getClass().getDeclaredField("mGoButton");  // 4.4返回null
             fieldGoButton.setAccessible(true);  // 强行可访问；class是整个虚拟机共用(当然也包括里面的field名)
-            View goButton = (View) fieldGoButton.get(searchView);  // 因此获取反射的field时要给定class的实例
+            goButton = (View) fieldGoButton.get(searchView);  // 因此获取反射的field时要给定class的实例
+        } catch (Exception e) {
+            Log.e(TAG, "onCreateOptionsMenu: " + e.toString());
+            try {
+                Field fieldGoButton = searchView.getClass().getDeclaredField("mSubmitButton");
+                fieldGoButton.setAccessible(true);
+                goButton = (View) fieldGoButton.get(searchView);
+            } catch (Exception ee) {
+                Log.e(TAG, "onCreateOptionsMenu: " + ee.toString());
+            }
+        }
+        if (goButton != null) {
             goButton.setOnLongClickListener(new View.OnLongClickListener() {
                 @Override
                 public boolean onLongClick(View v) {
@@ -763,8 +661,6 @@ public class ContentActivity extends AppCompatActivity {
                     return true;  // 不引发Click
                 }
             });
-        } catch (Exception e) {
-            Log.e(TAG, "onCreateOptionsMenu: " + e.toString());
         }
         return true;
     }

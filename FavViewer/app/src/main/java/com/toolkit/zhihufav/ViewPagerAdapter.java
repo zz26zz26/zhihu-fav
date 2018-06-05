@@ -381,16 +381,15 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
         //"<noscript>Javascript unavailable.</noscript>"  // 旧版遇src=""会请求当前页面url；没有src直接没图
         //content_html = content_html.replaceAll("(<img[^>]*?) src=", "$1 data-src=");  // 加个?快些
         // 处理了<pre>内容与ViewPager左右滑动时的冲突(估计要js设置点击事件)，才能让代码块不换行显示
-        // 但是有点<pre>块一行太长，且一般不分代码或文本，不便于判断滑动…还不如横屏
+        // 但是有些<pre>块一行太长，且一般不分代码或文本，不便于判断滑动…还不如横屏
 
         String head = "<head><style>" + css + "</style></head>";
         String body = "<body>" + content_html + end + "</body>";
         // 之前用替换宽度为100%的方法使图片尺寸适合屏幕(没width属性的仍过大)
         //body = body.replaceAll("(<\\w+[^>]+ width=\")\\d*(\"[^>]+>)", "$1100%$2");  // $后只看第一个数字
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.KITKAT) {  // 4.4的浏览器不能正确定位和显示圆形边框
-            head = head.replaceFirst("\\Qa.video-box::before\\E[^}]+\\}",
-                    "a.video-box::before { position:absolute; height:100%; width:100%;" +
-                    "background:rgba(0,0,0,.5); content:''; z-index:1; }");
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.KITKAT) {
+            head = head.replace("transform:", "-webkit-transform:");  // 4.4的浏览器不能识别标准变换
+            head = head.replace("border:solid", "-webkit-border:solid");  // 边框不能圆角(内容能)，弄成这样不显示
         }
         content_html = head + body;
         return content_html;

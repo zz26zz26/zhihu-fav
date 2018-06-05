@@ -18,7 +18,7 @@
         <item name="windowActionModeOverlay">true</item>
 
         <!--布局根元素要设置android:fitsSystemWindows="true"才能不让内容顶到状态栏上-->
-        <!--4.4时若只有Toolbar则只应在Toolbar上添加这个属性，不然无效-->
+        <!--4.4时则只应在Toolbar或AppBarLayout上添加那个属性，不然原来状态栏处是白色-->
         <item name="android:windowTranslucentStatus">true</item>
     </style>
 
@@ -32,8 +32,10 @@
         <!--?android:attr/popupBackground，默认透明，其他弹窗可重用-->
         <!--?android:attr/itemBackground，指定标题栏溢出菜单项背景色-->
         <!--?android:attr/textColor指定溢出菜单文字颜色 ..Primary和actionMenuTextColor不行-->
-        <!--用PopupMenu后不设置那个颜色也行，但即使改了android:popupMenuStyle右边还是贴屏幕-->
-        <!--现背景抄自Base.Widget.AppCompat.ListPopupWindow，它有android:popupBackground但用不了-->
+        <!--用PopupMenu后不设置上面颜色也行，问题是改了android:popupMenuStyle右边还是贴屏幕…-->
+        <!--现Menu背景即Base.Widget.AppCompat.ListPopupWindow，它有android:popupBackground但没用-->
+        <!--colorControlNormal、colorControlActivated分别为AppCompatCheckBox未选中和选中的颜色…-->
+        <!--但4.4时即使改了这个再重新layout也无法生效(颜色有缓存?)，5.0的则没有问题-->
         <item name="colorAccent">@color/color_accent_night</item>
         <item name="android:textColorPrimary">@color/text_color_primary_night</item>
         <item name="android:textColorSecondary">@color/text_color_secondary_night</item>

@@ -5,13 +5,16 @@
     android:id="@+id/content_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fitsSystemWindows="true"
     tools:context="com.toolkit.zhihufav.ContentActivity">
 
+    <!--若AppBarLayout和父级都不设fitsSystemWindows，标题栏就会顶到状态栏上-->
+    <!--若父级和AppBarLayout只设一个，则状态栏处相当于一个颜色条，和标题栏一起滑动-->
+    <!--在4.4中，状态栏透明时的颜色是最外层控件的背景色-->
     <android.support.design.widget.AppBarLayout
         android:id="@+id/app_bar"
         android:layout_width="match_parent"
         android:layout_height="@dimen/app_bar_height"
+        android:background="?attr/colorPrimary"
         android:fitsSystemWindows="true"
         android:theme="@style/AppTheme.AppBarOverlay">
 
@@ -21,7 +24,6 @@
             android:id="@+id/toolbar_layout"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:fitsSystemWindows="true"
             app:contentScrim="?attr/colorPrimary"
             app:expandedTitleGravity="center_vertical"
             app:expandedTitleMarginBottom="16dp"

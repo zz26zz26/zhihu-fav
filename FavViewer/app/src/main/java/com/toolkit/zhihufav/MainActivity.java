@@ -16,6 +16,7 @@ import android.support.v4.content.res.ResourcesCompat;
 import android.support.v4.view.MenuItemCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.app.ActionBar;
+import android.support.v7.widget.AppCompatCheckBox;
 import android.support.v7.widget.GridLayout;
 import android.support.v7.widget.Toolbar;
 import android.text.TextUtils;
@@ -204,6 +205,8 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public boolean onTouch(View v, MotionEvent event) {
+            if (mPopupWindow == null) return false;  // 程序启动时可能会神奇地进来
+
             DisplayMetrics metrics = getResources().getDisplayMetrics();
             int screen_width = metrics.widthPixels;
             int popup_width = mPopupWindow.getContentView().getWidth();
@@ -468,7 +471,7 @@ public class MainActivity extends AppCompatActivity {
             Log.e("NightTheme_main", e.toString());
         }
 
-        mPopupWindow = newPopupWindow();  // 重新布局颜色就对了
+        mPopupWindow = newPopupWindow();  // 重新布局颜色就对了，但4.4的选框不对
         mListView.removeFooterView(mFooterView);  // Footer不删了再加会造成setFooter无效
         mFooterView = LayoutInflater.from(this).inflate(R.layout.listview_footer, null);
         mListView.addFooterView(mFooterView, null, false);
@@ -492,10 +495,10 @@ public class MainActivity extends AppCompatActivity {
         GridLayout list = (GridLayout) pw.getContentView().findViewById(R.id.gridLayout_folder);
         View template = list.getChildAt(0);  // xml里有1个不可见项作为模板
         GridLayout.LayoutParams t_param = (GridLayout.LayoutParams) template.getLayoutParams();
-        String invisible_tag = ((String) template.getTag()).substring("folder_".length());
+        String invisible_tag = ((String) template.getTag()).substring("folder_".length());  // 去掉tag前缀
         for (String folder : mFolderList) {
             if (folder.equals(invisible_tag)) continue;
-            CheckBox box = new CheckBox(this);  // 默认没有ID
+            CheckBox box = new AppCompatCheckBox(this);  // 默认没有ID；4.4若用CheckBox则颜色和xml弄的不同
             GridLayout.LayoutParams params = new GridLayout.LayoutParams();
             params.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1.0f);  // 填满剩余空间
             params.setMargins(t_param.leftMargin, t_param.topMargin, t_param.rightMargin, t_param.bottomMargin);
