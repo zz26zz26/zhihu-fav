@@ -11,20 +11,20 @@
 * 当然也可以手动设需要爬取的收藏夹链接，按照scrape.py最后的Run Script部分代码里的注释操作即可
 * 若要用登录信息，需先在浏览器登录，然后找到scrape.py最后的Run Script部分，把Cookie粘贴到header处再运行脚本
 * 登录Cookie获取：在收藏夹页面打开F12-网络，刷新，点击url和地址栏相同的那项html，复制右侧请求标头里的Cookie值  
-![copy_cookie](demo/cookie.png)
+![cookie_get](demo/cookie.png)
 
 ## FavViewer
 ### 基本功能
 * 可对爬取的收藏夹数据进行搜索，支持搜索标题、正文、作者、时间，支持按文章/回答、收藏夹筛选
 * 回答中的图片可以进行本地缓存，且在使用流量时不会自动下载
-* 支持夜间模式
+* 支持夜间模式，默认支持安卓4.4及以上系统
 ### 使用说明
-* 打开app前要把scrape.py导出的sql脚本放到：存储卡/Android/data/com.toolkit.zhihufav/files/fav.sql
-* 在回答详情页点击标题可以查找同问题下收藏的其他回答；双击标题则查找已收藏的该答主其他回答
+* 打开app前要把scrape.py导出的sql脚本放到：外部存储/Android/data/com.toolkit.zhihufav/files/fav.sql
+* 在回答正文页点击标题可以查找同问题下收藏的其他回答；双击标题则查找已收藏的该答主其他回答
 ### 屏幕截图
 * 示例收藏内容分别来自（求生欲很强）：  
 https://www.zhihu.com/question/28891984/answer/49423495  
 https://www.zhihu.com/question/28891984/answer/49989294  
 https://www.zhihu.com/question/29896218/answer/157398073  
 https://www.zhihu.com/question/40522110/answer/269795931    
-![ui](demo/ui.png) ![ui](demo/ui_night.png)
+![ui](demo/ui.png) ![ui_night](demo/ui_night.png)
