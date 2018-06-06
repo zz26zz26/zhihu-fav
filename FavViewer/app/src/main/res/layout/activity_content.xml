@@ -9,13 +9,12 @@
 
     <!--若AppBarLayout和父级都不设fitsSystemWindows，标题栏就会顶到状态栏上-->
     <!--若父级和AppBarLayout只设一个，则状态栏处相当于一个颜色条，和标题栏一起滑动-->
-    <!--在4.4中，状态栏透明时的颜色是最外层控件的背景色-->
+    <!--在4.4改透明状态栏的颜色可在此启用fits...后设android:background="?attr/colorPrimary"-->
+    <!--当然若要在状态栏处显示图片就不能启用android:fitsSystemWindows="true"-->
     <android.support.design.widget.AppBarLayout
         android:id="@+id/app_bar"
         android:layout_width="match_parent"
         android:layout_height="@dimen/app_bar_height"
-        android:background="?attr/colorPrimary"
-        android:fitsSystemWindows="true"
         android:theme="@style/AppTheme.AppBarOverlay">
 
         <!--TitleTextAppearance取值就是Toolbar的样式，collapse不弄夜间是纯白-->
@@ -31,6 +30,14 @@
             app:expandedTitleMarginTop="?attr/actionBarSize"
             app:expandedTitleTextAppearance="@style/TextAppearance.Toolbar.Title"
             app:layout_scrollFlags="scroll|exitUntilCollapsed|snap">
+
+            <ImageView
+                android:id="@+id/imageView_title"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@null"
+                android:scaleType="fitCenter"
+                app:srcCompat="@android:color/transparent" />
 
             <TextView
                 android:id="@+id/textView_toolbarLayout"
@@ -50,12 +57,12 @@
                 android:id="@+id/toolbar_content"
                 android:layout_width="match_parent"
                 android:layout_height="?attr/actionBarSize"
+                android:layout_marginTop="24dp"
                 app:contentInsetStartWithNavigation="0dp"
                 app:layout_collapseMode="pin"
                 app:popupTheme="@style/AppTheme.PopupOverlay">
 
             </android.support.v7.widget.Toolbar>
-
 
         </android.support.design.widget.CollapsingToolbarLayout>
 
@@ -64,8 +71,6 @@
     <!--CoordinatorLayout直接子级且实现NestedScrollingChild接口，设layout_behavior才好用-->
     <!--NestedScrollView包裹ViewPager时，要在代码中设置setFillViewport(true)-->
     <android.support.v4.widget.NestedScrollView
-        xmlns:android="http://schemas.android.com/apk/res/android"
-        xmlns:tools="http://schemas.android.com/tools"
         android:id="@+id/scroll_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"

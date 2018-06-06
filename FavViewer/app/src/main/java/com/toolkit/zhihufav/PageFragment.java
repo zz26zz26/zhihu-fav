@@ -141,7 +141,7 @@ public class PageFragment extends Fragment {
                         parentEvent.setAction(MotionEvent.ACTION_CANCEL);
                         scroller.onTouchEvent(parentEvent);
                         Log.d(TAG, "NestedScroll CANCEL  @vy = " + velY);
-                        event.setAction(MotionEvent.ACTION_DOWN);  // 5.0若之前CANCEL后要再DOWN才会动
+                        event.setAction(MotionEvent.ACTION_DOWN);  // 5.0后若之前CANCEL后要再DOWN才会动
                     }
                     inNestedScroll = false;
                 }

@@ -116,6 +116,15 @@ public class ContentActivity extends AppCompatActivity {
         return PageFragment.getContentMode(getCurrentWebView());
     }
 
+    private int getStatusBarHeight() {
+        int result = 0;  // @android:dimen/status_bar_height是系统私有属性
+        int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        if (resourceId > 0) {
+            result = getResources().getDimensionPixelSize(resourceId);
+        }
+        return result;
+    }
+
     private void reloadCurrentWebView(int target_mode) {
         mAdapter.reloadToMode(getCurrentWebView(), target_mode);
     }
@@ -493,8 +502,11 @@ public class ContentActivity extends AppCompatActivity {
             actionBar.setDisplayShowHomeEnabled(false);  // 去掉标题栏图标
             actionBar.setDisplayHomeAsUpEnabled(true);   // 启用返回按钮事件(onOptionsItemSelected)
         }
+        ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) mToolBar.getLayoutParams();
+        params.topMargin = getStatusBarHeight();  // 想在透明状态栏显示图片，需手动把标题栏往下挪
+        mToolBar.setLayoutParams(params);         // 用fitsSystemWindows则状态栏的位置只能空在那
 
-        mResult = getIntent();  // 直接利用；下面setCurrentItem()用到mResult
+        mResult = getIntent();  // 直接利用；下面setCurrentItem用到mResult
         setResult(RESULT_OK, mResult);  // 不换页就返回也得有个结果
 
         setTitle("加载中...");
