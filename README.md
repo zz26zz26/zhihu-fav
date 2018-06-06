@@ -19,7 +19,7 @@
 * 回答中的图片可以进行本地缓存，且在使用流量时不会自动下载
 * 支持夜间模式，默认支持安卓4.4及以上系统
 ### 使用说明
-* 打开app前要把scrape.py导出的sql脚本放到：外部存储/Android/data/com.toolkit.zhihufav/files/fav.sql
+* 打开前要把scrape.py导出的sql脚本放到：外部存储(如SD卡)/Android/data/com.toolkit.zhihufav/files/fav.sql
 * 在回答正文页点击标题可以查找同问题下收藏的其他回答；双击标题则查找已收藏的该答主其他回答
 ### 屏幕截图
 * 示例收藏内容分别来自（求生欲很强）：  
