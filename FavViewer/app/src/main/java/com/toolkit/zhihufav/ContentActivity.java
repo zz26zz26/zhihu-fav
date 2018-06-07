@@ -80,7 +80,7 @@ public class ContentActivity extends AppCompatActivity {
     static final int TOOLBAR_INTERMEDIATE = 0;
     static final int TOOLBAR_EXPANDED = 1;
 
-    private class onPageChangeListener extends ViewPager.SimpleOnPageChangeListener {
+    private class OnPageChangeListener extends ViewPager.SimpleOnPageChangeListener {
         @Override
         public void onPageSelected(int position) {
             // 在setCurrentItemInternal/scrollToItem里，先调用smoothScrollTo/populate/setPrimaryItem
@@ -522,7 +522,7 @@ public class ContentActivity extends AppCompatActivity {
 
         // Set up the ViewPager with the sections mAdapter.
         mViewPager = (ViewPager) findViewById(R.id.container);
-        mViewPager.addOnPageChangeListener(new onPageChangeListener());
+        mViewPager.addOnPageChangeListener(new OnPageChangeListener());
         mViewPager.setAdapter(mAdapter);  // 有数据下面才能换页
 
         // 清内存重入需要add，而从main点进来时不用

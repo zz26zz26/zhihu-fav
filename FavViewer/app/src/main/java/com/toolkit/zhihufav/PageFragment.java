@@ -16,7 +16,6 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
-import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebResourceResponse;
@@ -64,7 +63,7 @@ public class PageFragment extends Fragment {
     private static int sEntryPage;
     private static boolean sNightTheme;
     private static DiskLruCache mCache;
-    // 以上为各Fragment共用
+    // 以上static为各Fragment共用
 
     private long mLoadStartTime;
     private String mLoadImageUrl;
@@ -73,7 +72,7 @@ public class PageFragment extends Fragment {
     private boolean mChangeCacheModeOnPageFinish;
     private Runnable mPendingModeChange;
 
-    private class onTouchListener implements View.OnTouchListener {
+    private class OnTouchListener implements View.OnTouchListener {
 
         private int dragDirection;  // 0非拖动(点击) 1主要X轴(横向) 2主要Y轴(纵向)
         private int initialPointerId;  // 防止多点触控视为滑动，然后造成ViewPager闪退
@@ -95,8 +94,9 @@ public class PageFragment extends Fragment {
 
         private boolean dispatchNestedScroll(WebView webView, MotionEvent event) {
             // 假装WebView实现了简化的NestedScrollingChild接口，用此方法通知父级嵌套滑动
-            // 嵌套先让父级消费，并据此对本event进行offset来达到共同滑动(父级全部消费此处就不滚动)，不必CANCEL
-            // 然而多点触控时WebView滑动距离不会算，只能强行CANCEL/DOWN换消费方，不然多指上滑(一静一动)标题栏不折叠
+            // 原生嵌套先让父级消费，并据此对本event进行offset来达到共同滑动(父级全消费此处就不动)，不必CANCEL
+            // 然而又要考虑WebView的位置的运动并不好算，且由于位置在动而手指就在那，似乎滑快就会出现嵌套不同步
+            // 多点触控时WebView滑动距离与Nested不同，以前只用CANCEL/DOWN换消费方，多指上滑(一静一动)标题栏不折叠
             int action = event.getAction();  // UP必然只剩一个手指，MOVE则包含所有手指，都不会有Mask
 
             if (dragDirection == 1) {  // 这里调onTouchEvent则横滑画面会抖动，且隔壁网页能竖滑(横滑闪退)
@@ -141,7 +141,7 @@ public class PageFragment extends Fragment {
                         parentEvent.setAction(MotionEvent.ACTION_CANCEL);
                         scroller.onTouchEvent(parentEvent);
                         Log.d(TAG, "NestedScroll CANCEL  @vy = " + velY);
-                        event.setAction(MotionEvent.ACTION_DOWN);  // 5.0后若之前CANCEL后要再DOWN才会动
+                        event.setAction(MotionEvent.ACTION_DOWN);  // 5.0后若之前CANCEL过要再DOWN才会动
                     }
                     inNestedScroll = false;
                 }
@@ -283,7 +283,7 @@ public class PageFragment extends Fragment {
 
     }
 
-    private class webViewClient extends WebViewClient {
+    private class CachedWebViewClient extends WebViewClient {
 
         private class CachedInputStream extends FilterInputStream {
 
@@ -471,7 +471,7 @@ public class PageFragment extends Fragment {
             String html = params[1];
 
             if (url.contains("?") || url.contains("_r") || !url.contains("_")) {
-                cancel(true);  // 公式是服务器生成的矢量图，不能乱加后缀
+                cancel(true);  // 公式(含?)是服务器生成的矢量图，不能乱加后缀
                 return null;   // 不含_或含_r说明已是原图，不用再管
             }
 
@@ -591,7 +591,7 @@ public class PageFragment extends Fragment {
                     MessageDigest md = MessageDigest.getInstance("MD5");  // MD5(32位16进制)/SHA-1(40位)
                     md.update(url.substring(url.lastIndexOf('=') + 1).getBytes());  // 安卓默认UTF-8
                     StringBuilder sb = new StringBuilder(39);  // url里的tex中/=已转义，.没转
-                    for (byte b : md.digest()) {  // %02x；& 0xff使负数转int时变成正数，而非0xffffff**
+                    for (byte b : md.digest()) {  // %02x；& 0xff使负数byte转int时前面是0，而非符号位
                         sb.append((b & 0xff) < 16 ? "0" : "").append(Integer.toHexString(b & 0xff));
                     }
                     return sb.insert(0, "eq-").append(".svg").toString();
@@ -914,8 +914,8 @@ public class PageFragment extends Fragment {
         webView.setTag(R.id.web_tag_scroll, scroll);  // MODE不是START，下面loadPage不改滚动位置
         webView.setTag(R.id.web_tag_in_html, content); // 一直是首页的源码
         webView.setTag(R.id.web_tag_fragment, this);
-        webView.setWebViewClient(new webViewClient());
-        webView.setOnTouchListener(new onTouchListener());
+        webView.setWebViewClient(new CachedWebViewClient());
+        webView.setOnTouchListener(new OnTouchListener());
         webView.setBackgroundColor(sBackColor);  // 防夜间快速换页时闪过白色，xml里WebView的background没用
 //        WebSettings settings = webView.getSettings();
 //        settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);  // 视频的js就要新的吧

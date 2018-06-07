@@ -126,7 +126,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private class onScrollListener implements AbsListView.OnScrollListener {
+    private class OnListScrollListener implements AbsListView.OnScrollListener {
         @Override
         public void onScrollStateChanged(AbsListView view, int scrollState) {}
 
@@ -140,7 +140,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private class onItemClickListener implements AdapterView.OnItemClickListener {
+    private class OnItemClickListener implements AdapterView.OnItemClickListener {
         @Override
         public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
             Context context = getApplicationContext();  // 若用Activity.this在清内存时就没了
@@ -150,7 +150,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private class onQueryTextListener implements SearchView.OnQueryTextListener {
+    private class OnQueryTextListener implements SearchView.OnQueryTextListener {
         @Override
         public boolean onQueryTextSubmit(String query) {
             onQueryTextChange(query);
@@ -171,7 +171,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private class onActionExpandListener implements MenuItemCompat.OnActionExpandListener {  // MenuItem.OnActionExpandListener
+    private class OnMenuActionListener implements MenuItemCompat.OnActionExpandListener {  // MenuItem.OnActionExpandListener
         @Override
         public boolean onMenuItemActionExpand(MenuItem item) {
             if (item.getItemId() == R.id.search) {
@@ -196,7 +196,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private class onPopupTouchListener implements View.OnTouchListener {
+    private class OnPopupTouchListener implements View.OnTouchListener {
 
         private int activePointerId;
         private VelocityTracker tracker;
@@ -524,7 +524,7 @@ public class MainActivity extends AppCompatActivity {
         final View view = window.getContentView();
 
         // 自身触摸滑动事件
-        window.setTouchInterceptor(new onPopupTouchListener());
+        window.setTouchInterceptor(new OnPopupTouchListener());
 
         // 设置动画插值以及动画完毕再dismiss
         view.animate().setInterpolator(new TimeInterpolator() {
@@ -854,9 +854,9 @@ public class MainActivity extends AppCompatActivity {
         mListView = (ListView) findViewById(R.id.listView_data);
         mFooterView = LayoutInflater.from(this).inflate(R.layout.listview_footer, null);
         mListView.addFooterView(mFooterView, null, false);  // 不可点击
-        mListView.setOnScrollListener(new onScrollListener());  // 立刻触发OnScroll
-        mListView.setOnTouchListener(new onPopupTouchListener());
-        mListView.setOnItemClickListener(new onItemClickListener());
+        mListView.setOnScrollListener(new OnListScrollListener());  // 立刻触发OnScroll
+        mListView.setOnTouchListener(new OnPopupTouchListener());
+        mListView.setOnItemClickListener(new OnItemClickListener());
         mListView.setAdapter(mAdapter);  // 要在setAdapter前加addFooterView，不然不显示
 
         mPendingQueryTask = new Runnable() {
@@ -1001,9 +1001,9 @@ public class MainActivity extends AppCompatActivity {
         SearchView searchView = (SearchView) MenuItemCompat.getActionView(mSearchItem);
         //SearchView searchView = (SearchView) mSearchItem.getActionView();  // ActionBar时用这
         searchView.setQueryHint(getString(R.string.main_search_hint));
-        searchView.setOnQueryTextListener(new onQueryTextListener());
-        MenuItemCompat.setOnActionExpandListener(mSearchItem, new onActionExpandListener());
-        //mSearchItem.setOnActionExpandListener(new onActionExpandListener());  // ActionBar时用这
+        searchView.setOnQueryTextListener(new OnQueryTextListener());
+        MenuItemCompat.setOnActionExpandListener(mSearchItem, new OnMenuActionListener());
+        //mSearchItem.setOnActionExpandListener(new OnMenuActionListener());  // ActionBar时用这
 
         if (mQueryText != null && !mQueryText.isEmpty()) {
             expandSearchView();  // 清内存后从ContentActivity点标题重入时恢复搜索框状态
