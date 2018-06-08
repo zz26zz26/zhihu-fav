@@ -10,14 +10,18 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.support.annotation.NonNull;
+import android.support.annotation.RequiresApi;
 import android.support.v4.view.ViewPager;
 import android.support.v4.widget.NestedScrollView;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
+import android.view.VelocityTracker;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -74,12 +78,84 @@ public class PageFragment extends Fragment {
 
     private class OnTouchListener implements View.OnTouchListener {
 
+        private Runnable flingChecker;
+        private VelocityTracker tracker;
+        private ViewConfiguration config = ViewConfiguration.get(getActivity());
+
         private int dragDirection;  // 0非拖动(点击) 1主要X轴(横向) 2主要Y轴(纵向)
         private int initialPointerId;  // 防止多点触控视为滑动，然后造成ViewPager闪退
-        private long touchDownTime, touchUpTime;
+        private long touchDownTime, touchUpTime, lastScrollY;
         private float touchStartX, touchStartY, lastMotionY, lastCenterY, initialTop;
-        private boolean inNestedScroll;
-//        private VelocityTracker tracker;
+        private boolean inNestedScroll, inNestedFling = false;
+
+        private void startFlingScroll(WebView webView) {
+            if (flingChecker == null) {
+                final WebView v = webView;
+                flingChecker = new Runnable() {
+                    @Override
+                    public void run() {
+                        if (getContentMode(v) == MODE_START && v.getScrollY() != lastScrollY) {
+                            lastScrollY = v.getScrollY();  // 检查MODE防止destroy或开图片还在测
+                            v.postDelayed(flingChecker, 100);
+                            //Log.d(TAG, "WebView flinging");
+                        } else inNestedFling = false;
+                    }
+                };
+            }
+            lastScrollY = 0;
+            inNestedFling = true;
+            webView.postDelayed(flingChecker, 100);
+            webView.flingScroll((int) tracker.getXVelocity(), -(int) tracker.getYVelocity());
+            Log.d(TAG, "WebView fling started, estimated vy = " + tracker.getYVelocity());
+            // flingScroll之后要有新fling再按才能停下！普通点击或滑动不行
+        }
+
+        private void stopFlingScroll(WebView webView) {
+            int thresh = config.getScaledTouchSlop() + 1;  // 移动距离要大于slop，且速度达到最小fling速度
+            int duration = thresh / Math.max(1, (int) Math.ceil(config.getScaledMinimumFlingVelocity() / 1000.0));
+            long eventTime = SystemClock.uptimeMillis();  // MotionEvent.obtain注释说必须用这个时间
+
+            if (duration < 3) {
+                thresh *= 2;  // 虽然一般是不会用到这里的
+                duration = thresh / Math.max(1, (int) Math.ceil(config.getScaledMinimumFlingVelocity() / 1000.0));
+            }
+
+            // 先模拟一次惯性滚动，覆盖flingScroll的滚动
+            MotionEvent downEvent = MotionEvent.obtain(eventTime, eventTime,
+                    MotionEvent.ACTION_DOWN, 0, 0, 0);  // 倒数第2/3个参数是相对View的坐标
+            webView.onTouchEvent(downEvent);  // 不要dispatch，过程太复杂
+            downEvent.recycle();
+
+            MotionEvent moveEvent = MotionEvent.obtain(eventTime, eventTime + 1,
+                    MotionEvent.ACTION_MOVE, 0, 0, 0);  // eventTime不加1是跳动，没有滚动动画
+            webView.onTouchEvent(moveEvent);  // 没有第一个MOVE也是跳动
+            moveEvent.recycle();
+
+            MotionEvent moveEvent2 = MotionEvent.obtain(eventTime, eventTime + duration,
+                    MotionEvent.ACTION_MOVE, 0, thresh, 0);  // 至少+3；VelocityTracker用eventTime算速度
+            webView.onTouchEvent(moveEvent2);  // 没有第二个MOVE直接不触发fling
+            moveEvent2.recycle();
+
+            MotionEvent upEvent = MotionEvent.obtain(eventTime, eventTime + duration,
+                    MotionEvent.ACTION_UP, 0, thresh, 0);  // 不要移得太远，不然在下面单击之前就会跳很远
+            webView.onTouchEvent(upEvent);
+            upEvent.recycle();
+
+            // 再模拟点击停掉惯性滚动
+            MotionEvent downEvent2 = MotionEvent.obtain(eventTime, eventTime + duration,
+                    MotionEvent.ACTION_DOWN, 0, 0, 0);
+            webView.onTouchEvent(downEvent2);
+            downEvent2.recycle();
+
+            MotionEvent upEvent2 = MotionEvent.obtain(eventTime, eventTime + duration,
+                    MotionEvent.ACTION_UP, 0, -thresh, 0);  // 实际测量间隔是0-3ms
+            webView.onTouchEvent(upEvent2);  // 模拟滑出界防止认成点击，也不能弄成横滑不然会换页
+            upEvent2.recycle();
+
+            // 停掉就重置，网页静止时调用此函数会往上跳动
+            inNestedFling = false;
+            Log.d(TAG, "WebView fling stopped");
+        }
 
         private float getYPointerCenter(MotionEvent event) {
             int n = event.getPointerCount();
@@ -145,14 +221,15 @@ public class PageFragment extends Fragment {
                     }
                     inNestedScroll = false;
                 }
-//                if (MotionEvent.ACTION_UP == action && ContentActivity.TOOLBAR_COLLAPSED == toolbarState && 0 == webView.getScrollY()) {
-//                    ViewConfiguration config = ViewConfiguration.get(getActivity());
-//                    tracker.computeCurrentVelocity(1000, config.getScaledMaximumFlingVelocity());
-//                    if (tracker.getYVelocity() < -config.getScaledMinimumFlingVelocity()) {
-//                        Log.d(TAG, "WebView fling        @vy = " + tracker.getYVelocity());
-//                        webView.flingScroll((int) tracker.getXVelocity(), -(int) tracker.getYVelocity());  // 点击时停不下！
-//                    }
-//                }
+                if (MotionEvent.ACTION_UP == action && ContentActivity.TOOLBAR_EXPANDED != toolbarState && 0 == webView.getScrollY()) {
+                    // 以前用上滑够快就让网页响应滚动来触发fling，但手指轻触快速上滑时会出现网页在滚而标题栏折一点又展开了
+                    tracker.computeCurrentVelocity(1000, config.getScaledMaximumFlingVelocity());  // 不限制能一口气滑到底
+                    int minFlingVel = 5000;  // 至少要能把标题栏折叠完才能开始fling！至少末速度比折叠动画的快 TODO 得测测
+                    if (tracker.getYVelocity() < -minFlingVel) {
+                        activity.setToolBarExpanded(false);
+                        startFlingScroll(webView);
+                    }
+                }
                 lastMotionY += velY;
                 lastCenterY += movY;
                 parentEvent.recycle();
@@ -170,7 +247,7 @@ public class PageFragment extends Fragment {
             float top = event.getRawY() - event.getY();  // 可把各手指都转为RawY
             float deltaX = event.getRawX() - touchStartX;
             float deltaY = event.getRawY() - touchStartY;  // Raw只能取Index=0的手指位置
-            float thresh = 8 * getResources().getDisplayMetrics().density;  // 8dp->px
+            float thresh = config.getScaledTouchSlop();
 
 //            String[] s = {"DOWN", "UP", "MOVE", "CANCEL", "OUTSIDE", "POINTER_DOWN", "POINTER_UP"};
 //            if (tracker != null) tracker.computeCurrentVelocity(1000);
@@ -211,7 +288,8 @@ public class PageFragment extends Fragment {
                     dragDirection = 0;
                     inNestedScroll = false;
                     lastMotionY = lastCenterY = event.getY();
-//                    if (tracker == null) tracker = VelocityTracker.obtain();
+                    if (tracker == null) tracker = VelocityTracker.obtain();
+                    if (inNestedFling) stopFlingScroll(webView);  // 只应弄停调用flingScroll的滚动
                     webView.requestDisallowInterceptTouchEvent(true);  // 同时会通知到所有父级
                     break;  // 复制/图片/视频页全程阻止父级拦截(防换页/出标题)
 
@@ -222,12 +300,12 @@ public class PageFragment extends Fragment {
                         dragDirection = 2;    // 图片模式也用此判断是否为点击(之前只看位移不看路程)
                     if (dragDirection == 0)
                         lastMotionY = lastCenterY = event.getY();  // 放前俩if之后，即没定方向才改(此时必为单指)
-//                    if (tracker != null) {
-//                        MotionEvent v_event = MotionEvent.obtain(event);  // 要单独弄，不然滑动会跳
-//                        v_event.offsetLocation(0, top - initialTop);  // 计算用的相对坐标在标题栏伸缩时不变
-//                        tracker.addMovement(v_event);
-//                        v_event.recycle();
-//                    }
+                    if (tracker != null) {
+                        MotionEvent v_event = MotionEvent.obtain(event);  // 要单独弄，不然滑动会跳
+                        v_event.offsetLocation(0, top - initialTop);  // 计算用的相对坐标在标题栏伸缩时不变
+                        tracker.addMovement(v_event);
+                        v_event.recycle();
+                    }
                     break;
 
                 case MotionEvent.ACTION_POINTER_DOWN:
@@ -271,12 +349,12 @@ public class PageFragment extends Fragment {
                 consumed = dispatchNestedScroll(webView, event);  // 放tracker.recycle之前
             }  // 里面修改event的action没事，因为下面用的action是最开始的缓存
 
-//            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-//                if (tracker != null) {
-//                    tracker.recycle();
-//                    tracker = null;
-//                }
-//            }
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                if (tracker != null) {
+                    tracker.recycle();
+                    tracker = null;
+                }
+            }
 
             return consumed;  // false表示没有消费事件，仍向下传递(才能点击/滑动)
         }
@@ -306,15 +384,15 @@ public class PageFragment extends Fragment {
                 // WebView的InputStreamUtil是调用此读取，遂可在这先缓存再return出去
                 // https://chromium.googlesource.com/chromium/src.git/+/master/android_webview/java/src/org/chromium/android_webview/InputStreamUtil.java
                 try {
-                    int read_len = super.read(b, off, len);
-                    if (read_len != -1 && max_read_len >= 0) {  // 只写>0永远进不来…
+                    int read_len = super.read(b, off, len);  // 可能抛连接超时
+                    if (read_len != -1 && max_read_len != -1) {  // 若写len>0则永远进不来…
                         cacheStream.write(b, off, read_len);
-                        max_read_len = Math.max(read_len, max_read_len);  // 似乎最大见过2048
-                        max_buffer_len = Math.max(b.length, max_buffer_len);  // 长度会变，最大见过4096
                         total_len += read_len;
+                        max_read_len = Math.max(read_len, max_read_len);  // 似乎最大见过2048
+                        max_buffer_len = Math.max(b.length, max_buffer_len);  // WebView传来，最大见过4096
                     }
                     return read_len;
-                } catch (Exception e) {  // 包括连接超时
+                } catch (Exception e) {
                     Log.e(TAG, "read: " + e.toString());
                     max_read_len = -1;
                     throw e;
@@ -340,12 +418,13 @@ public class PageFragment extends Fragment {
                     if (mCache != null && !mCache.isClosed()) {
                         mCache.flush();  // cache已close后再来抛异常
                     }
+                } finally {
+                    super.close();  // 免得catch里异常时不关就走了
                 }
-                super.close();
             }
         }
 
-        @Override  // 4.4用不了新版函数；7.0只有新版函数
+        @Override @SuppressWarnings("deprecation")  // 4.4用新版函数拿不到url
         public boolean shouldOverrideUrlLoading(WebView view, String url) {
             Log.i(TAG, "shouldOverrideUrlLoading: " + url);
             if ((url.contains("//www.zhihu.com/video/") || url.contains("//v.vzuu.com/video/")) &&
@@ -360,7 +439,7 @@ public class PageFragment extends Fragment {
             return true;  // 本函数已处理，浏览器就不要管了
         }
 
-        @Override  // 4.4用不了新版函数；7.0只有新版函数
+        @Override @SuppressWarnings("deprecation")  // 7.0似乎只有新版函数
         public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
             // 注意此函数不在UI线程，不能改界面，不能调getSettings()，网页返回或关掉也不会停
             // 而且此处也不能进行长时间操作，不然下载的图片多时会卡死数秒(浏览器死，换页也是白屏)
@@ -402,6 +481,16 @@ public class PageFragment extends Fragment {
             }
             if (url.endsWith("?head")) url = url.substring(0, url.lastIndexOf('?'));  // 自己的标记别传出去
             return super.shouldInterceptRequest(view, url);  // 默认返回null，WebView自己处理
+        }
+
+        @Override @RequiresApi(Build.VERSION_CODES.N)
+        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            return shouldOverrideUrlLoading(view, request.getUrl().toString());
+        }
+
+        @Override @RequiresApi(Build.VERSION_CODES.N)
+        public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+            return shouldInterceptRequest(view, request.getUrl().toString());
         }
 
         @Override
@@ -714,25 +803,23 @@ public class PageFragment extends Fragment {
 
     public static void setScrollPos(WebView webView, int y, boolean animate) {
         if (webView != null) {
-//            NestedScrollView scroller = (NestedScrollView) webView.getParent();
-            if (animate) {  // 要先模拟一次点击停止惯性滚动，并且要注意别点开图片
+            if (animate) {  // 先模拟一次点击停止惯性滚动，并且要注意别点开图片
                 long eventTime = SystemClock.uptimeMillis();  // obtain注释说必须用这个时间
-                MotionEvent downEvent = MotionEvent.obtain(eventTime, eventTime,
-                        MotionEvent.ACTION_DOWN, 0, 0, 0);  // 倒数第2/3个参数是相对View的坐标
-                webView.dispatchTouchEvent(downEvent);  // onTouchEvent绕过onTouch，拦截不了点开视频
-                downEvent.recycle();
+                MotionEvent downEvent = MotionEvent.obtain(eventTime, eventTime + 10,
+                        MotionEvent.ACTION_DOWN, 0, 0, 0);
+                webView.dispatchTouchEvent(downEvent);  // 能进到onTouch里停止程序惯性滚动
+                downEvent.recycle();  // 手动的惯性滚动是靠这里的模拟点击停掉的
 
-                MotionEvent upEvent = MotionEvent.obtain(eventTime, eventTime + 1,
-                        MotionEvent.ACTION_UP, 0, -10, 0);  // 加多少时间实际测量间隔都是0-3ms
-                webView.dispatchTouchEvent(upEvent);  // 模拟滑动防止认成点击，也不能弄成横滑不然会换页
+                MotionEvent upEvent = MotionEvent.obtain(eventTime, eventTime + 15,
+                        MotionEvent.ACTION_UP, 0, -100, 0);  // 实际测量间隔是0-3ms
+                webView.dispatchTouchEvent(upEvent);  // 模拟滑出界防止认成点击，也不能弄成横滑不然会换页
                 upEvent.recycle();
 
+                // 停下来就可以安心动画了
                 ObjectAnimator anim = ObjectAnimator.ofInt(webView, "scrollY", webView.getScrollY(), 0);
                 anim.start();  // 默认300ms，修改用setDuration()
-//                scroller.smoothScrollTo(0, y);
             } else {
                 webView.setScrollY(y);
-//                scroller.setScrollY(y);
             }
         }
     }
