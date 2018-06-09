@@ -349,12 +349,13 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
                      "    var img = ImageArray;" +
                      "    var n = 0, len = img.length;" +
                      "    var f = function () {" +
-                     "        if (n >= len) return;" +
+                     "        if (n >= len) { disable_load(); return; }" +
                      "        var boxHeight = document.body.clientHeight;" +  // scrollHeight是网页总高度
                      "        for (; n < len; n++) {" +  // getBoundingClientRect原点在显示区域左上角
                      "            if (img[n].getBoundingClientRect().top < boxHeight * 2)" +  // 提前一屏准备
                      "                img[n].onclick();" +  // img.offsetTop在父级css设置position后是相对父级的偏移
-                     "            else break;" +
+                     "            else if (img[n].src.length === 0 || img[n].src.indexOf('file:') === 0)" +  // 4.4没startsWith
+                     "                break;" +  // 没缓存的才要等滑到它；已下好就让n继续++，全都下好即可提前disable
                      "        }" +
                      "        console.log(n >= len ? 'Load done!' : 'Next: img #' + n + ', dist = ' + " +
                      "                    (img[n].getBoundingClientRect().top - boxHeight * 2));" +

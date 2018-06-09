@@ -367,33 +367,59 @@ public class PageFragment extends Fragment {
 
             private static final String TAG = "CachedInputStream";
 
+            private String url;
             private DiskLruCache.Editor cache;
             private OutputStream cacheStream;
-            private int max_buffer_len = 0;
-            private int max_read_len = 0;
-            private int total_len = 0;
+            private int max_read_len;  // 默认均为0
+            private int expect_len;
+            private int real_len;
 
-            private CachedInputStream(@NonNull InputStream in, DiskLruCache.Editor cache) throws IOException {
-                super(in);  // 刷新缓冲区后mark即失效，无论markLimit多大，所以limit设为INT_MAX无效
-                this.cache = cache;  // cache的OutputStream出现IO异常时不抛，而是等commit时自动改为abort
+            private CachedInputStream(String url, DiskLruCache.Editor cache) throws IOException {
+                super(null);
+                this.url = url;  // 刷新缓冲区后mark即失效，无论markLimit多大，所以limit设为INT_MAX无效
+                this.cache = cache;  // cache的OutputStream出IO异常时不抛，而是等commit时自动改为abort
                 this.cacheStream = cache.newOutputStream(0);
             }
 
             @Override
+            public int available() throws IOException {
+                return (super.in == null) ? 0 : super.available();  // 最底层就返回0；read前会调用一次
+            }
+
+            @Override
+            public long skip(long n) throws IOException {
+                return (super.in == null) ? 0 : super.skip(n);  // 源码显示可能调用的就这四个方法
+            }
+
+            @Override
             public int read(@NonNull byte[] b, int off, int len) throws IOException {
-                // WebView的InputStreamUtil是调用此读取，遂可在这先缓存再return出去
                 // https://chromium.googlesource.com/chromium/src.git/+/master/android_webview/java/src/org/chromium/android_webview/InputStreamUtil.java
+                // 源码说明WebView的InputStreamUtil是调用此读取，且用线程池里的线程（不是UI也不是IO）
+                // 遂可在这先缓存再return出去，也可弄耗时操作（点开图时直接停掉不close，图片没下完也不管）
                 try {
+                    if (super.in == null) {  // 为避免在WebView有限的IO线程里长时间操作，只能留到这真正初始化
+                        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+                        conn.setConnectTimeout(10000);  // nginx默认60s
+                        conn.setReadTimeout(10000);  // get自动调connect，如没网就抛异常
+                        if (conn.getResponseCode() == HttpURLConnection.HTTP_OK) {  // 不然0kb文件也成缓存了
+                            super.in = conn.getInputStream();
+                            this.expect_len = conn.getContentLength();
+                        } else {
+                            max_read_len = -1;
+                            conn.disconnect();
+                            return -1;
+                        }
+                    }
+
                     int read_len = super.read(b, off, len);  // 可能抛连接超时
-                    if (read_len != -1 && max_read_len != -1) {  // 若写len>0则永远进不来…
-                        cacheStream.write(b, off, read_len);
-                        total_len += read_len;
-                        max_read_len = Math.max(read_len, max_read_len);  // 似乎最大见过2048
-                        max_buffer_len = Math.max(b.length, max_buffer_len);  // WebView传来，最大见过4096
+                    if (read_len != -1 && max_read_len != -1) {  // 若写max_len>0则永远进不来…
+                        cacheStream.write(b, off, read_len);  // b从WebView传来，长度不定，一般4096
+                        max_read_len = Math.max(read_len, max_read_len);  // 似乎最大2048
+                        real_len += read_len;
                     }
                     return read_len;
                 } catch (Exception e) {
-                    Log.e(TAG, "read: " + e.toString());
+                    Log.e(TAG, "read " + url + " : " + e.toString());
                     max_read_len = -1;
                     throw e;
                 }
@@ -404,23 +430,19 @@ public class PageFragment extends Fragment {
                 try {
                     cacheStream.flush();
                     cacheStream.close();
-                    if (max_read_len > 0) {
-                        Log.w(TAG, "close: max_buffer_byte = " + max_buffer_len +
-                                ", max_transmission_unit = " + max_read_len +
-                                ", total_byte = " + total_len);
+                    if (max_read_len > 0 && expect_len == real_len) {
+                        Log.w(TAG, "close " + url + " : max_transmission_unit = " + max_read_len +
+                                ", total_byte = " + real_len + ", " + expect_len);
                         cache.commit();
                     } else {
-                        Log.e(TAG, "close: max_buffer_byte = " + max_buffer_len + ", wasted_byte = " + total_len);
+                        Log.e(TAG, "close " + url + " : wasted_byte = " + real_len + ", expect_byte = " + expect_len);
                         cache.abort();
                     }
-                } catch (Exception e) {  // 缓存写不了可以下次再说，不必影响浏览
-                    Log.e(TAG, "close: " + e.toString());
-                    if (mCache != null && !mCache.isClosed()) {
-                        mCache.flush();  // cache已close后再来抛异常
-                    }
-                } finally {
-                    super.close();  // 免得catch里异常时不关就走了
+                } catch (Exception e) {  // 缓存写不了什么的可以下次再试，不必抛出去
+                    Log.e(TAG, "close " + url + " : " + e.toString());
                 }
+                if (super.in != null)
+                    super.close();  // 这里的异常就会抛出去
             }
         }
 
@@ -441,12 +463,13 @@ public class PageFragment extends Fragment {
 
         @Override @SuppressWarnings("deprecation")  // 7.0似乎只有新版函数
         public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
-            // 注意此函数不在UI线程，不能改界面，不能调getSettings()，网页返回或关掉也不会停
-            // 而且此处也不能进行长时间操作，不然下载的图片多时会卡死数秒(浏览器死，换页也是白屏)
-            // 包括favicon.ico、js、图片、视频、重定向都会进来；setBlockNetworkLoads也会先进来
+            // 注意此函数不在UI线程，不能改界面，不能调getSettings()，网页返回或关掉也不一定会停
+            // 还有此函数不能搞耗时操作，不然网速慢时会卡死几十秒(WebView的IO线程有限，能换页但全是白屏)
+            // 进来的请求包括favicon.ico、js、图片、视频、重定向；setBlockNetworkLoads也会先进来
             // 图片都自己存一份，方便长按保存图片，没网也能知道是动图了；公式图也得存不然不能导出
             Log.i(TAG, "shouldInterceptRequest: " + url);
-            if (url.endsWith(".jpg") || url.endsWith(".png") || url.endsWith(".gif") || url.contains("equation?tex=")) {
+            if (url.endsWith(".jpg") || url.endsWith(".png") || url.endsWith(".gif") ||
+                    url.endsWith(".webp") || url.contains("equation?tex=")) {  // 出现频率高者在前
                 String name = getUrlHash(url);  // 公式图根据tex代码命名，出错这次就不存了(edit抛异常)
                 String type = url.contains("equation?tex=") ? "svg+xml" : url.substring(url.lastIndexOf('.') + 1);
                 try {
@@ -455,20 +478,12 @@ public class PageFragment extends Fragment {
                     if (snapshot != null) {
                         inStream = snapshot.getInputStream(0);
                     } else if (!mCacheOnly) {
-                        DiskLruCache.Editor editor = mCache.edit(name);
+                        DiskLruCache.Editor editor = mCache.edit(name);  // 里面会flush
                         if (editor != null) {
                             try {
-                                HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-                                conn.setConnectTimeout(10000);  // get自动调connect，如没网就抛异常
-                                conn.setReadTimeout(30000);  // Nginx默认60s
-                                if (conn.getResponseCode() == HttpURLConnection.HTTP_OK) {  // 不然出错0kb文件也成缓存了
-                                    inStream = new CachedInputStream(conn.getInputStream(), editor);
-                                } else {
-                                    editor.abort();  // 没问题时snapshot别close，不然inStream就没了
-                                    conn.disconnect();  // 没问题也别disconnect
-                                }
+                                inStream = new CachedInputStream(url, editor);
                             } catch (Exception e) {
-                                Log.e(TAG, "shouldInterceptRequest_download: " + e.toString() + ", abort");
+                                Log.e(TAG, "shouldInterceptRequest: " + e.toString() + ", abort");
                                 editor.abort();
                             }
                         }
@@ -521,15 +536,15 @@ public class PageFragment extends Fragment {
                     @Override
                     public void run() {for (int i = 0; i < 5; i++) webView.zoomOut();}
                 }, 1000);
-                if (load_time < 800) {  // 若用setLoadsImagesAutomatically下完图才触发；js初始化久，也会看一半回头
+                if (load_time < 1500) {  // 若用setLoadsImagesAutomatically下完图才触发；js初始化久，也会看一半回头
                     view.postDelayed(new Runnable() {
                         @Override
                         public void run() {recallScrollPos(webView);}
-                    }, 40);  // 20以下无效，30长文不行
+                    }, 50);  // 20以下无效，30长文不行
                     view.postDelayed(new Runnable() {
                         @Override
                         public void run() {recallScrollPos(webView);}
-                    }, 200);  // 最多刷新后1s跳转
+                    }, 500);  // 200图多的页不行；最多刷新后2s跳转
                 }
             } else if (getContentMode(view) == MODE_IMAGE && !TextUtils.isEmpty(mLoadImageUrl)) {
                 mLoadImageUrl = "";  // 每点开一张图尝试一次；不能在UI线程访问网络，不然抛异常
