@@ -298,6 +298,10 @@ public class ContentActivity extends AppCompatActivity {
         return mToolbarState;
     }
 
+    public int getToolbarHeight() {
+        return mAppBarLayout.getTotalScrollRange();
+    }
+
     public void setToolbarDoingExpand(boolean expand) {
         mToolbarDoingExpand = expand;
         mToolbarDoingCollapse = !expand;

@@ -224,8 +224,8 @@ public class PageFragment extends Fragment {
                 if (MotionEvent.ACTION_UP == action && ContentActivity.TOOLBAR_EXPANDED != toolbarState && 0 == webView.getScrollY()) {
                     // 以前用上滑够快就让网页响应滚动来触发fling，但手指轻触快速上滑时会出现网页在滚而标题栏折一点又展开了
                     tracker.computeCurrentVelocity(1000, config.getScaledMaximumFlingVelocity());  // 不限制能一口气滑到底
-                    int minFlingVel = 5000;  // 至少要能把标题栏折叠完才能开始fling！至少末速度比折叠动画的快 TODO 得测测
-                    if (tracker.getYVelocity() < -minFlingVel) {
+                    int minFlingVel = Math.max(config.getScaledMinimumFlingVelocity(), activity.getToolbarHeight()) * 20;
+                    if (tracker.getYVelocity() < -minFlingVel) {  // 至少要能把标题栏折叠完才能开始fling
                         activity.setToolBarExpanded(false);
                         startFlingScroll(webView);
                     }
