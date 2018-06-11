@@ -304,24 +304,23 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
                      "function body_color(c) { document.getElementsByTagName('body')[0].style.color = c; }" +
                      "function on_init() {" +
                      "    var img = document.getElementsByTagName('img');" +
-                     "    var len = img.length;" +
+                     "    var len = img.length;" +  // for-in会把元素属性一起遍历，for-of要5.1的浏览器才支持
                      "    for (var i = 0; i < len; i++) {" +  // 保留src属性以便有缓存时立即读取，没缓存的在此点击后正好出错换图
                      "        img[i].setAttribute('data-src', img[i].src);" +  // 就不在html里替换了，注意在绑定事件前设置
                      "        img[i].onclick = function () {" +
-                     "            if (this.hasAttribute('data-src') && this.getAttribute('data-src').length > 0) {" +  // 这里出异常lazy_load就跑不下去
-                     "                var f = function (obj, url) { obj.src = url; obj.removeAttribute('data-src'); };" +
-                     "                setTimeout(f, 100, this, this.getAttribute('data-src'));" +  // 延迟使WebView在onTouch出错图时地址还是错图的
-                     "                console.log('onClick: ' + this.getAttribute('data-src'));" +
-                     "                this.setAttribute('data-src', '');" +  // data-src只清空，防止延迟中多次点击造成error后又改src，或延迟中进error
-                     "            }" +  // setTimeout参数的this指调用处最后一个点.之前的对象，即img
-                     "        };" +     // 而在f里的this指向window，可理解为最后是由window.setTimeout调用的f
+                     "            if (this.hasAttribute('data-src')) {" +  // 这里出异常lazy_load就跑不下去
+                     "                this.src = this.getAttribute('data-src');" +  // 要防止多次点击造成出error前改src
+                     "                this.removeAttribute('data-src');" +  // this指调用处最后一个点.之前的对象，即img
+                     "                console.log('onClick: ' + this.src);" +
+                     "            }" +  // 若这里又定义个函数f并由setTimeout调用，则f里的this指向window
+                     "        };" +     // 可理解为最后是由window.setTimeout调用的f（图多时定时器太多会慢）
                      "        img[i].onerror = function () {" +  // 不能改成大写；若无src载入时也触发此
-                     "            if (!this.hasAttribute('data-src')) {" +  // has(src)不行否则第二次data-src变file://
+                     "            if (!this.hasAttribute('data-src')) {" +  // has('src')不行否则第二次data-src变空或file://
                      "                var f = this.hasAttribute('eeimg') || this.className === 'thumbnail';" +  // 公式/视频
-                     "                this.setAttribute('data-src', this.src);" +  // 若在onclick的set后timeout前，会使data-src变空
-                     "                console.log('onError: ' + this.getAttribute('data-src'));" +
+                     "                this.setAttribute('data-src', this.src);" +
                      "                this.src = f ? '' : 'file:///android_asset/file_download_placeholder.svg';" +
-                     "            }" +  // ''不显示裂开图标，且保留img::before背景(视频框里的图不认::before)；本地文件不存在都有图裂
+                     "                console.log('onError: ' + this.getAttribute('data-src'));" +
+                     "            }" +  // src=''不显示裂开图标，且保留img::before背景(但视频框里的图没有)；本地文件不存在都有图裂
                      "        };" +     // 与https共用时要开启混合模式才能访问file:// (当然每次都有警告)
 //                     "        img[i].onload = function () {" +
 //                     "            if (this.src.endsWith('.jpg') || this.src.endsWith('.png')) {" +
@@ -340,11 +339,10 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
                      "    }" +
                      "    ImageArray = img;" +  // 前面不带var的是window全局变量
                      "    ImageLoader = throttle(lazy_load(1), 250);" +  // onclick已经remove了data-src，这里再跑就出错
-                     "}" +  // 用流量时disable禁止自动下图，用wifi时才能启用；for-in会把元素属性一起遍历，for-of要5.1才支持
-//                     "function load_all() { for (var i = 0; i < ImageArray.length; i++) ImageArray[i].onclick(); }" +  // 一般用于加载缓存
-//                     "function unload_all() { for (var i = 0; i < ImageArray.length; i++) ImageArray[i].onerror(); }" +  // 有缓存也换图，省内存?
+                     "}" +  // 用流量时disable禁止自动下图，用wifi时才能启用
                      "function enable_load() { window.addEventListener('scroll', ImageLoader); }" +  // 重复add还是一个
                      "function disable_load() { window.removeEventListener('scroll', ImageLoader); }" +
+                     "function active_load() { for (var i = 0; i < ImageArray.length; i++) ImageArray[i].onclick(); }" +
                      "function lazy_load(init) {" +
                      "    var img = ImageArray;" +
                      "    var n = 0, len = img.length;" +

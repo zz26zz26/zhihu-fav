@@ -70,7 +70,6 @@ public class PageFragment extends Fragment {
     // 以上static为各Fragment共用
 
     private long mLoadStartTime;
-    private String mLoadImageUrl;
     private boolean mOnCreate;
     private boolean mCacheOnly;
     private boolean mChangeCacheModeOnPageFinish;
@@ -94,9 +93,9 @@ public class PageFragment extends Fragment {
                 flingChecker = new Runnable() {
                     @Override
                     public void run() {
-                        if (getContentMode(v) == MODE_START && v.getScrollY() != lastScrollY) {
-                            lastScrollY = v.getScrollY();  // 检查MODE防止destroy或开图片还在测
-                            v.postDelayed(flingChecker, 100);
+                        if (inNestedFling && getContentMode(v) == MODE_START && v.getScrollY() != lastScrollY) {
+                            v.postDelayed(flingChecker, 250);  // 检查inNestedFling防止手动滑动时还去post
+                            lastScrollY = v.getScrollY();  // 检查MODE防止destroy或开图片还去post
                             //Log.d(TAG, "WebView flinging");
                         } else inNestedFling = false;
                     }
@@ -104,7 +103,7 @@ public class PageFragment extends Fragment {
             }
             lastScrollY = 0;
             inNestedFling = true;
-            webView.postDelayed(flingChecker, 100);
+            webView.postDelayed(flingChecker, 250);
             webView.flingScroll((int) tracker.getXVelocity(), -(int) tracker.getYVelocity());
             Log.d(TAG, "WebView fling started, estimated vy = " + tracker.getYVelocity());
             // flingScroll之后要有新fling再按才能停下！普通点击或滑动不行
@@ -112,12 +111,11 @@ public class PageFragment extends Fragment {
 
         private void stopFlingScroll(WebView webView) {
             int thresh = config.getScaledTouchSlop() + 1;  // 移动距离要大于slop，且速度达到最小fling速度
-            int duration = thresh / Math.max(1, (int) Math.ceil(config.getScaledMinimumFlingVelocity() / 1000.0));
+            int duration = 5;  // 至少是3才能被识别为有效fling
             long eventTime = SystemClock.uptimeMillis();  // MotionEvent.obtain注释说必须用这个时间
 
-            if (duration < 3) {
-                thresh *= 2;  // 虽然一般是不会用到这里的
-                duration = thresh / Math.max(1, (int) Math.ceil(config.getScaledMinimumFlingVelocity() / 1000.0));
+            if (1000 * thresh / duration < config.getScaledMinimumFlingVelocity()) {  // 速度不够
+                thresh = config.getScaledMinimumFlingVelocity() * duration / 1000 + 1;  // 路程来凑
             }
 
             // 先模拟一次惯性滚动，覆盖flingScroll的滚动
@@ -141,7 +139,7 @@ public class PageFragment extends Fragment {
             webView.onTouchEvent(upEvent);
             upEvent.recycle();
 
-            // 再模拟点击停掉惯性滚动
+            // 再模拟点击停掉惯性滚动；点击间隔小于10即可在onTouch里判为程序点击
             MotionEvent downEvent2 = MotionEvent.obtain(eventTime, eventTime + duration,
                     MotionEvent.ACTION_DOWN, 0, 0, 0);
             webView.onTouchEvent(downEvent2);
@@ -282,14 +280,14 @@ public class PageFragment extends Fragment {
                 case MotionEvent.ACTION_DOWN:
                     touchStartX = event.getRawX();  // Down时只有一个手指，不必指定PointerId
                     touchStartY = event.getRawY();  // 需用Raw，否则标题栏折叠使ViewPager上移时deltaY不变
-                    touchDownTime = event.getDownTime();  // 用于判断程序还是手动点击
+                    touchDownTime = event.getDownTime();  // 用于判断长按和程序点击
                     initialPointerId = event.getPointerId(0);
                     initialTop = top;
                     dragDirection = 0;
                     inNestedScroll = false;
                     lastMotionY = lastCenterY = event.getY();
                     if (tracker == null) tracker = VelocityTracker.obtain();
-                    if (inNestedFling) stopFlingScroll(webView);  // 只应弄停调用flingScroll的滚动
+                    if (inNestedFling) stopFlingScroll(webView);  // 只用弄停flingScroll造成的滚动
                     webView.requestDisallowInterceptTouchEvent(true);  // 同时会通知到所有父级
                     break;  // 复制/图片/视频页全程阻止父级拦截(防换页/出标题)
 
@@ -319,13 +317,14 @@ public class PageFragment extends Fragment {
                         switch (getContentMode(webView)) {
                             case MODE_START:  // 视频封面SRC_IMAGE_ANCHOR_TYPE；播放页图IMAGE_TYPE
                                 if (result.getType() == WebView.HitTestResult.IMAGE_TYPE) {
-                                    if (result.getExtra().startsWith("http") &&   // 文件不行
+                                    if (result.getExtra().startsWith("http") &&   // 文件不行(空src在loadImage里也是直接返回)
                                             currentTime - touchDownTime < 500 &&  // 长按不行(ViewConfiguration.getLongPressTimeout()
                                             currentTime - touchDownTime > 10 &&   // 机按不行(人超轻触可4ms但不自然)
-                                            currentTime - touchUpTime > 300) {    // 双击不行(免得单击后js改src还没下完就开)
-                                        mLoadImageUrl = result.getExtra();
-                                        loadImagePage(webView, mLoadImageUrl);
-                                        currentTime = 0;  // 防止点开图片后300ms内再点一次就放大
+                                            currentTime - touchUpTime > 600) {    // 连击不行(免得生成太多异步)
+                                        new RawImageLoader(PageFragment.this).executeOnExecutor(
+                                                AsyncTask.THREAD_POOL_EXECUTOR, result.getExtra(),
+                                                (String) webView.getTag(R.id.web_tag_in_html));
+                                        currentTime -= 300;  // 防止点开图片后马上再点一次就放大
                                     }
                                 }
                                 break;
@@ -395,7 +394,7 @@ public class PageFragment extends Fragment {
             public int read(@NonNull byte[] b, int off, int len) throws IOException {
                 // https://chromium.googlesource.com/chromium/src.git/+/master/android_webview/java/src/org/chromium/android_webview/InputStreamUtil.java
                 // 源码说明WebView的InputStreamUtil是调用此读取，且用线程池里的线程（不是UI也不是IO）
-                // 遂可在这先缓存再return出去，也可弄耗时操作（点开图时直接停掉不close，图片没下完也不管）
+                // 遂在此可先缓存再return出去，也可弄耗时操作（点开图时直接close，图片没下完也不管）
                 try {
                     if (super.in == null) {  // 为避免在WebView有限的IO线程里长时间操作，只能留到这真正初始化
                         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
@@ -527,15 +526,9 @@ public class PageFragment extends Fragment {
                     mChangeCacheModeOnPageFinish = true;  // 这样才能去changeCacheMode
                     changeCacheMode(view);  // Finish后调用js才有效
                     if (sEntryPage > 0) sEntryPage = -2;  // 非创建能进来说明是换页预载，再来这一页时就不要搞特殊了
-//                } else {
-//                    view.loadUrl("javascript:unload_all()");  // 这样换页时又得断流量加载一轮缓存
                 }
 
                 final WebView webView = view;  // 即使返回前缩回最小了，还是可能放大首页
-                view.postDelayed(new Runnable() {
-                    @Override
-                    public void run() {for (int i = 0; i < 5; i++) webView.zoomOut();}
-                }, 1000);
                 if (load_time < 1500) {  // 若用setLoadsImagesAutomatically下完图才触发；js初始化久，也会看一半回头
                     view.postDelayed(new Runnable() {
                         @Override
@@ -544,28 +537,40 @@ public class PageFragment extends Fragment {
                     view.postDelayed(new Runnable() {
                         @Override
                         public void run() {recallScrollPos(webView);}
-                    }, 500);  // 200图多的页不行；最多刷新后2s跳转
+                    }, 500);  // 200图多不行；最多刷新后2s跳
                 }
-            } else if (getContentMode(view) == MODE_IMAGE && !TextUtils.isEmpty(mLoadImageUrl)) {
-                mLoadImageUrl = "";  // 每点开一张图尝试一次；不能在UI线程访问网络，不然抛异常
-                String html = (String) view.getTag(R.id.web_tag_in_html);
-                new RawImageUrlGetter(PageFragment.this).  // 有缓存图片打开很快，就不放在onPageStart里了
-                        executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, url, html);
+                view.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (getContentMode(webView) == MODE_START)  // 2s够点开图片再放大了，不能在这缩小
+                            for (int i = 0; i < 7; i++)
+                                webView.zoomOut();
+                    }
+                }, 2000);  // 机子慢1s不行
             }
             mOnCreate = false;  // 放在使用之后啊…
         }
 
     }
 
-    private static class RawImageUrlGetter extends AsyncTask<String, Void, String> {
+    private static class RawImageLoader extends AsyncTask<String, String, String> {
 
         private int contentLength;
         private WeakReference<PageFragment> fragmentRef;
 
-        RawImageUrlGetter(PageFragment fragment) {
+        private RawImageLoader(PageFragment fragment) {
             super();
-            contentLength = 0;
             fragmentRef = new WeakReference<>(fragment);
+        }
+
+        private WebView getVisibleWebView() {
+            PageFragment fragment = fragmentRef.get();
+            if (fragment == null) return null;
+
+            View view = fragment.getView();  // 本Fragment可见且网页在看图模式才载入新网址
+            if (view == null || !fragment.getUserVisibleHint()) return null;
+
+            return (WebView) view.findViewById(R.id.webView_section);
         }
 
         @Override
@@ -575,8 +580,8 @@ public class PageFragment extends Fragment {
             String html = params[1];
 
             if (url.contains("?") || url.contains("_r") || !url.contains("_")) {
-                cancel(true);  // 公式(含?)是服务器生成的矢量图，不能乱加后缀
-                return null;   // 不含_或含_r说明已是原图，不用再管
+                publishProgress(url);  // 公式(含?)是服务器生成的矢量图，不能乱加后缀
+                return null;           // 不含_或含_r说明已是原图，直接载入，不用再管
             }
 
             // url_后缀(边长)：均为等比例缩小，缩不了给原图，打死不会放大
@@ -586,10 +591,17 @@ public class PageFragment extends Fragment {
             // 60w(60) 250x0(250) qhd(480) b(600) hd(720) fhd(1080) r(原图)=无后缀，按宽度缩
             String raw_img_url = url.replaceFirst("(?:_[^_/]+)?\\.\\w+$", "");  // 弄成无后缀
 
-            {   // 先看看缓存里有没有对应的gif/jpg大图，没有再去尝试联网
+            {   // 首先确认缓存有url指定的图，说明至少小图已下载完成，有得显示，才能开始
+                // 然后看看缓存里有没有对应的gif/jpg大图，没有再去尝试联网
                 String raw_name = raw_img_url.substring(raw_img_url.lastIndexOf('/') + 1);
                 DiskLruCache.Snapshot snapshot = null;
                 try {
+                    if ((snapshot = mCache.get(getUrlHash(url))) != null) {  // 下载中也是null
+                        publishProgress(url);
+                    } else {
+                        return null;
+                    }
+
                     if ((snapshot = mCache.get(raw_name + "_r.gif")) != null) {
                         return raw_img_url + "_r.gif";
                     }
@@ -620,7 +632,6 @@ public class PageFragment extends Fragment {
                 }
             } catch (Exception e) {
                 Log.e(TAG, "GetGif: doInBackground: " + e.toString());
-                contentLength = -1;
             } finally {
                 if (conn != null)
                     conn.disconnect();  // keepAlive可复用，disconnect放回连接池
@@ -647,23 +658,22 @@ public class PageFragment extends Fragment {
                     return raw_img_url + "_r.jpg";
             }
 
-            cancel(true);  // 前面没return就来到这，如小图就不必重定向
-            return null;
+            return null;  // 前面没return就来到这，如小图就不必重定向
+        }
+
+        @Override
+        protected void onProgressUpdate(String... values) {
+            super.onProgressUpdate(values);
+            if (values == null || values.length == 0) return;
+            loadImagePage(getVisibleWebView(), values[0]);
         }
 
         @Override
         protected void onPostExecute(String s) {
-            super.onPostExecute(s);  // s为空时一般已cancel
-            PageFragment fragment = fragmentRef.get();
-            if (fragment == null || s == null) return;
+            super.onPostExecute(s);
+            if (s == null) return;
 
-            View view = fragment.getView();  // 本Fragment可见且网页在看图模式才改里面的WebView
-            if (view == null || !fragment.getUserVisibleHint()) return;
-
-            WebView webView = (WebView) view.findViewById(R.id.webView_section);
-            if (getContentMode(webView) != MODE_IMAGE) return;
-
-            loadImagePage(webView, s);
+            loadImagePage(getVisibleWebView(), s);
             ContentActivity activity = ContentActivity.getReference();
             if (activity != null) {  // 0.1M以上的才显示文件大小
                 String extra = contentLength > 1.1e5 ? ((contentLength * 10 >> 20) * .1f) + "M的" : "";
@@ -854,7 +864,7 @@ public class PageFragment extends Fragment {
 
 
     public static void loadStartPage(WebView webView, String url) {
-        if (TextUtils.isEmpty(url)) {
+        if (webView == null || TextUtils.isEmpty(url)) {
             return;  // 空地址当然就直接忽略，保持原状；除非再写个loadBlankPage
         }
 
@@ -884,7 +894,7 @@ public class PageFragment extends Fragment {
     }
 
     public static void loadImagePage(WebView webView, String url) {
-        if (TextUtils.isEmpty(url)) {
+        if (webView == null || TextUtils.isEmpty(url)) {
             return;
         }
 
@@ -925,7 +935,7 @@ public class PageFragment extends Fragment {
     }
 
     public static void loadVideoPage(WebView webView, String url) {
-        if (TextUtils.isEmpty(url)) {
+        if (webView == null || TextUtils.isEmpty(url)) {
             return;
         }
 
