@@ -632,13 +632,13 @@ public class PageFragment extends Fragment {
                 }
             } catch (Exception e) {
                 Log.e(TAG, "GetGif: doInBackground: " + e.toString());
+                return null;  // 断网又没有缓存大图，继续下去可能连小图都看不了(有对应大图的话)
             } finally {
                 if (conn != null)
                     conn.disconnect();  // keepAlive可复用，disconnect放回连接池
             }
 
-            {   // 若之前没有return，也可看有没有大图(断网别取消，不然本来是小图的都看不了)
-                // x-oss-meta-width/height不论请求s/xl都是原图尺寸，但只有专栏的图片才有此属性
+            {   // x-oss-meta-width/height不论请求s/xl都是原图尺寸，但只有专栏的图片才有此属性
                 // 当前WebViewer的html中img标签内的data-rawwidth(没有的一般够大或是公式/视频图)
                 // 提取网址中的文件名以加速匹配，然后找出此文件名所在<img>标签，再在其中找宽高
                 // 标签内没有所需属性时，截出的字串一般就是链接，直接转换会抛异常，耗时x10
@@ -673,7 +673,10 @@ public class PageFragment extends Fragment {
             super.onPostExecute(s);
             if (s == null) return;
 
-            loadImagePage(getVisibleWebView(), s);
+            WebView webView = getVisibleWebView();  // 网速慢时可能从图片页返回后才来到这
+            if (webView == null || getContentMode(webView) != MODE_IMAGE) return;
+
+            loadImagePage(webView, s);
             ContentActivity activity = ContentActivity.getReference();
             if (activity != null) {  // 0.1M以上的才显示文件大小
                 String extra = contentLength > 1.1e5 ? ((contentLength * 10 >> 20) * .1f) + "M的" : "";
