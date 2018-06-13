@@ -42,8 +42,13 @@
         android:title="@string/night_mode"
         android:visible="false" />
     <item
-        android:id="@+id/content_open_with"
+        android:id="@+id/content_rich_data"
         android:orderInCategory="107"
+        android:title="@string/rich_data"
+        android:visible="false" />
+    <item
+        android:id="@+id/content_open_with"
+        android:orderInCategory="108"
         android:title="@string/open_with"
         android:visible="false" />
 </menu>

@@ -48,6 +48,9 @@
     <string name="content_not_saved">无法保存此文件</string>
     <string name="external_storage">外部存储</string>
     <string name="filter_no_select_hint">全不选时搜索结果和全选时一样的…</string>
+    <string name="rich_data">流量用不完啊</string>
+    <string name="poor_data">流量挥霍完毕</string>
+    <string name="loading">加载中…</string>
 
 
     <!--以下可在代码中使用R.id.item_name来引用-->
@@ -59,11 +62,12 @@
     <item name="web_tag_in_html" type="id" />
     <item name="web_tag_fragment" type="id" />
 
+
     <!--以下可在代码中使用R.attr.attr_name来引用-->
     <!--若在style.xml的主题中有定义，还可在布局文件中使用?attr/attr_name引用-->
     <attr name="list_divider" format="color|reference" />
     <attr name="toolbar_divider" format="color|reference" />
-    <attr name="menu_night_mode_text" format="string|reference" />
+    <attr name="toolbar_mask_alpha" format="dimension|reference" />
     <attr name="popup_filter_background" format="color|reference" />
     <attr name="popup_overflow_background" format="color|reference" />
 </resources>

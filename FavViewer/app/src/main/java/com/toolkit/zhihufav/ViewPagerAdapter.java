@@ -3,6 +3,8 @@ package com.toolkit.zhihufav;
 import android.app.Fragment;
 import android.app.FragmentManager;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.support.v13.app.FragmentStatePagerAdapter;
@@ -13,9 +15,12 @@ import android.widget.Toast;
 
 import com.toolkit.zhihufav.util.SQLiteHelper;
 
+import java.io.File;
+import java.util.ArrayList;
+
 /**
  * Created on 2018/3/13.
- * Provide data and view for ContentActivity.
+ * Provide data for ContentActivity.
  */
 
 // PagerAdapter会在加载当前页后预载左右两页，并在滑动后删除远端的页
@@ -27,13 +32,14 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
     private static final String TAG = "ViewPagerAdapter";
 
     private Context mContext;
-    private Fragment mCurrentPage;        // 当前页面
-    private SQLiteHelper mDataSource;     // 数据源
+    private Fragment mCurrentPage;           // 当前页面
+    private SQLiteHelper mDataSource;        // 数据源
+    private ArrayList<Bitmap> mTitleImages;  // 头图缓存，与super.Fragments均为只存ViewPager预载的页
 
-    private int mCount;                   // 上次notify的数量(防止数据源更新过程中报未notify异常)
-    private boolean mFinding;             // 正在查找
-    private String mFindQuery;            // 查找的文本
-    private WebView.FindListener mFindListener;  // 文本找到后的回调
+    private int mCount;                      // 上次notify的数量(防止数据源更新过程中报未notify异常)
+    private boolean mFinding;                // 正在查找
+    private String mFindQuery;               // 查找的文本
+    private WebView.FindListener mFindListener;
     private SQLiteHelper.AsyncTaskListener mTaskListener;
 
 
@@ -46,6 +52,7 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
         mContext = ctx;
         mFindQuery = "";
         mFinding = false;
+        mTitleImages = new ArrayList<>();
         mFindListener = new WebView.FindListener() {
             private Toast toast = null;
 
@@ -100,7 +107,6 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
         // 不设置默认是0(透明)，即显示窗口背景色
         int color = PageFragment.isNightTheme() ? R.color.item_background_night : R.color.item_background;
         PageFragment.setBackColor(mContext.getResources().getColor(color));
-
         PageFragment.openCache(mContext);
     }
 
@@ -110,6 +116,9 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
             removeListener(mTaskListener);
             mDataSource = null;
             notifyDataSetChanged();  // 置空后还要通知，免得别处addSome抛未notify异常
+        }
+        if (mTitleImages != null) {
+            mTitleImages.clear();  // 没有引用的bitmap会被gc释放
         }
         PageFragment.closeCache();
     }
@@ -189,6 +198,35 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
         }
     }
 
+    void updateTitleImageAsync(int position) {
+        new AsyncTask<Integer, Void, Bitmap>() {
+            int position;
+
+            @Override
+            protected Bitmap doInBackground(Integer[] params) {
+                position = params[0];
+                String link = getPageTitleImageLink(position);
+                if (link == null) return null;
+                File cache = PageFragment.getUrlCache(link);  // 读磁盘+读图会对动画造成可见卡顿(~50ms)
+                if (cache == null) return null;
+                return BitmapFactory.decodeFile(cache.getAbsolutePath());
+            }
+
+            @Override
+            protected void onPostExecute(Bitmap bitmap) {
+                super.onPostExecute(bitmap);
+                while (mTitleImages.size() <= position) {
+                    mTitleImages.add(null);
+                }
+                if (mTitleImages.get(position) != null) {
+                    mTitleImages.get(position).recycle();
+                }
+                mTitleImages.set(position, bitmap);
+            }
+        }.executeOnExecutor(
+                AsyncTask.THREAD_POOL_EXECUTOR, position);
+    }
+
 
     void setEntryPage(int pos) {
         PageFragment.setEntryPage(pos);
@@ -203,8 +241,25 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
         // 换页时本函数被调用3次，第一次时会调两页的setUserVisibleHint，一页显示 一页隐藏
         // 即第一次调用setUserVisibleHint时，mCurrentPage还没变(当然它有自己的参数用不到这个)
         // 后两次是在ViewPager的绘制过程中的onMeasure里调用的，且不再调setUserVisibleHint
-        super.setPrimaryItem(container, position, object);
         mCurrentPage = (Fragment) object;
+        super.setPrimaryItem(container, position, object);
+    }
+
+    @Override
+    public Object instantiateItem(ViewGroup container, int position) {
+        Log.w(TAG, "instantiateItem, position = " + position);
+        updateTitleImageAsync(position);
+        return super.instantiateItem(container, position);
+    }
+
+    @Override
+    public void destroyItem(ViewGroup container, int position, Object object) {
+        Log.w(TAG, "destroyItem, position = " + position);
+        if (mTitleImages.get(position) != null) {
+            mTitleImages.get(position).recycle();
+            mTitleImages.set(position, null);
+        }
+        super.destroyItem(container, position, object);
     }
 
     @Override
@@ -216,7 +271,7 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
     @Override
     public Fragment getItem(int position) {
         // getItem is called to instantiate the fragment for the given page.
-        // Return a PageFragment (defined as a static inner class above).
+        // Return a PageFragment (defined as an independent class).
         return PageFragment.newInstance(position, getPageLink(position), getPageContent(position));
     }
 
@@ -271,9 +326,8 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
         String rule_color = " #aaa;";  // <hr>颜色，保留开头空格和结尾分号，日间不能太暗
         String note_color = "color:#777;";  // 图片说明文字和末尾答案信息颜色，日夜都能看清
         String block_back = "background:rgba(128,128,128,.1);";  // 底色即gray，之前是night ?"#333":"whitesmoke"
-        String body_color = PageFragment.isNightTheme() ? "color:darkgray;" : "color:#111;";  // 正文颜色，夜间不要全白不然刺眼
-        String first_figure = link.startsWith("zhuanlan") ? "body>figure:first-child { margin-top:-1em; }" : "";  // 专栏头图无边距
-        // TODO 头图显示在标题栏里(横屏?)，于是WebView下完通知+点标题栏出大图+文字阴影
+        String body_color = PageFragment.isNightTheme() ? "color:darkgray;" : "color:#111;";  // 正文颜色，夜间不要纯白不然刺眼
+        String first_figure = link.startsWith("zhuanlan") ? "body>figure:first-child { display:none }" : "";  // 头图无边距margin-top:-1em;
 
         String css = "body { margin:1em 1.25em; word-wrap:break-word; line-height:1.6; font-size:16px;" + body_color + "}" +
                      "blockquote { margin:1em 0; padding-left:0.7em; color:lightslategray; border-left:0.3em solid; }" +
@@ -339,7 +393,8 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
                      "    }" +
                      "    ImageArray = img;" +  // 前面不带var的是window全局变量
                      "    ImageLoader = throttle(lazy_load(1), 250);" +  // onclick已经remove了data-src，这里再跑就出错
-                     "}" +  // 用流量时disable禁止自动下图，用wifi时才能启用
+                     "}" +  // 一般用流量时disable禁止自动下图，用wifi时enable启用
+                     "function load_first() { ImageArray[0].onclick(); }" +  // 反正js里没人调用，出异常正好不干
                      "function enable_load() { window.addEventListener('scroll', ImageLoader); }" +  // 重复add还是一个
                      "function disable_load() { window.removeEventListener('scroll', ImageLoader); }" +
                      "function active_load() { for (var i = 0; i < ImageArray.length; i++) ImageArray[i].onclick(); }" +
@@ -392,6 +447,21 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
         }
         content_html = head + body;
         return content_html;
+    }
+
+    String getPageTitleImageLink(int position) {
+        if (mDataSource == null) return null;
+        String[] item = mDataSource.getItem(position);
+        if (item == null || !getPageLink(position).contains("zhuanlan")) return null;
+        String html = item[SQLiteHelper.getColumnIndex("content")];
+        if (!html.startsWith("<figure>")) return null;
+        int begin = html.indexOf(" src=\"");
+        return html.substring(begin + 6, html.indexOf("\"", begin + 6));
+    }
+
+    Bitmap getPageTitleImage(int position) {
+        if (position < 0 || position >= mTitleImages.size()) return null;
+        return mTitleImages.get(position);
     }
 
 }

@@ -5,4 +5,8 @@
     <dimen name="text_margin">16dp</dimen>
     <dimen name="app_bar_height">200dp</dimen>
 
+    <!--这里使用float是方便直观设置，实际使用时要转为0-255-->
+    <item name="toolbar_mask_alpha" type="dimen" format="float">0.141</item>
+    <item name="toolbar_mask_alpha_night" type="dimen" format="float">0.414</item>
+
 </resources>

@@ -1,6 +1,7 @@
 package com.toolkit.zhihufav;
 
 
+import android.animation.ObjectAnimator;
 import android.app.Fragment;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -11,6 +12,9 @@ import android.content.SharedPreferences;
 import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
 import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.Color;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
 import android.os.AsyncTask;
@@ -39,6 +43,7 @@ import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.WebView;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.PopupMenu;
 import android.widget.PopupWindow;
 import android.widget.SearchView;
@@ -71,14 +76,17 @@ public class ContentActivity extends AppCompatActivity {
     private static WeakReference<Context> sReference;
 
     private Toolbar mToolBar;
+    private ImageView mImageView;
+    private Runnable mTitleImageTask;
     private AppBarLayout mAppBarLayout;
     private CollapsingToolbarLayout mToolbarLayout;
-    private int mToolbarState;  // state有限状态 status偏向连续
-    private boolean mToolbarDoingExpand, mToolbarDoingCollapse;
+    private int mMaskAlpha;
+    private int mTitleState;  // state有限状态 status偏向连续
+    private boolean mTitleDoingExpand, mTitleDoingCollapse;
 
-    static final int TOOLBAR_COLLAPSED = -1;
-    static final int TOOLBAR_INTERMEDIATE = 0;
-    static final int TOOLBAR_EXPANDED = 1;
+    static final int TITLE_COLLAPSED = -1;
+    static final int TITLE_INTERMEDIATE = 0;
+    static final int TITLE_EXPANDED = 1;
 
     private class OnPageChangeListener extends ViewPager.SimpleOnPageChangeListener {
         @Override
@@ -86,9 +94,9 @@ public class ContentActivity extends AppCompatActivity {
             // 在setCurrentItemInternal/scrollToItem里，先调用smoothScrollTo/populate/setPrimaryItem
             // 再dispatchOnPageSelected/onPageSelected，但先调用的等动画完成才执行setPrimary，一般会慢
             // 然把页面滑动到位才松开，会立即执行setPrimary！与WebView有关的应放去setUserVisibleHint
-            //setToolBarVisible(true);                   // 考虑意外从复制模式换页…但会有好多postDelay
             mResult.putExtra("position", position);      // result直接用的传入Intent
             mAdapter.setQuery(null, "", true);           // 重置查找状态
+            mImageView.post(mTitleImageTask);            // 开始尝试设置标题图片
             setTitle(mAdapter.getPageTitle(position));   // position是滑动终点的索引(CurrentView是起点)
             if (position >= mAdapter.getCount() - mViewPager.getOffscreenPageLimit() - 1) {
                 mAdapter.addSomeAsync(5);  // 要预载入的页得在开始预载的前一页就准备好
@@ -134,7 +142,7 @@ public class ContentActivity extends AppCompatActivity {
         if (webView != null) {  // 用goBack不行，因为除了视频页都不是载入网址而是数据
             if (getCurrentWebViewMode() < PageFragment.MODE_START) {
                 PageFragment.setContentMode(getCurrentWebView(), PageFragment.MODE_START);
-                setToolBarVisible(true);  // 复制控件用的返回键这里拦不到，只是为了保证能退出复制模式
+                setTitleVisible(true);  // 复制控件用的返回键这里拦不到，只是为了保证能退出复制模式
                 return true;
             } else if (getCurrentWebViewMode() > PageFragment.MODE_START) {
                 reloadCurrentWebView(PageFragment.MODE_START);
@@ -151,6 +159,7 @@ public class ContentActivity extends AppCompatActivity {
     }
 
     private void onDisplayOptionsMenu(Menu menu) {
+        int mode = getCurrentWebViewMode();
         MenuItem menuItem;  // 此函数每次点开都调用，若add则加入的项不会清除
         menuItem = menu.findItem(R.id.content_menu_entry); // 伪装的入口当然不要显示
         menuItem.setVisible(false);
@@ -159,13 +168,16 @@ public class ContentActivity extends AppCompatActivity {
         menuItem = menu.findItem(R.id.content_copy_link);  // 链接也什么时候都能复制
         menuItem.setVisible(true);
         menuItem = menu.findItem(R.id.content_search);     // 图片视频模式不给找文本
-        menuItem.setVisible(getCurrentWebViewMode() == PageFragment.MODE_START);
+        menuItem.setVisible(mode == PageFragment.MODE_START);
         menuItem = menu.findItem(R.id.content_text_size);  // 图片视频模式不给调字体
-        menuItem.setVisible(getCurrentWebViewMode() == PageFragment.MODE_START);
+        menuItem.setVisible(mode == PageFragment.MODE_START);
         menuItem = menu.findItem(R.id.content_open_with);  // 图片视频模式不给乱打开
-        menuItem.setVisible(getCurrentWebViewMode() == PageFragment.MODE_START);
+        menuItem.setVisible(mode == PageFragment.MODE_START);
         menuItem = menu.findItem(R.id.content_save);       // 首页视频模式不给乱保存
-        menuItem.setVisible(getCurrentWebViewMode() == PageFragment.MODE_IMAGE);
+        menuItem.setVisible(mode == PageFragment.MODE_IMAGE);
+        menuItem = menu.findItem(R.id.content_rich_data);  // 流量模式文本按情况改变
+        menuItem.setVisible(mode == PageFragment.MODE_START);
+        menuItem.setTitle(PageFragment.isRichGuy() ? R.string.poor_data : R.string.rich_data);
         menuItem = menu.findItem(R.id.content_night_mode); // 夜间模式文本按情况改变
         menuItem.setTitle(PageFragment.isNightTheme() ? R.string.stop_night_mode : R.string.night_mode);
         menuItem.setVisible(true);                         // 而且也是什么时候都显示
@@ -269,6 +281,11 @@ public class ContentActivity extends AppCompatActivity {
                 getWindow().setStatusBarColor(resources.getColor(typedValue.resourceId));
             }
 
+            theme.resolveAttribute(R.attr.toolbar_mask_alpha, typedValue, true);
+            resources.getValue(typedValue.resourceId, typedValue, true);
+            mMaskAlpha = (int) (typedValue.getFloat() * 255);
+            mImageView.setColorFilter(Color.argb(mMaskAlpha, 0, 0, 0));
+
             theme.resolveAttribute(android.R.attr.itemBackground, typedValue, true);
             color = ResourcesCompat.getColor(resources, typedValue.resourceId, null);
             PageFragment.setBackColor(color);  // 此在新建网页时使用
@@ -278,7 +295,6 @@ public class ContentActivity extends AppCompatActivity {
                     webView.setBackgroundColor(color);
                     webView.setTag(R.id.web_tag_in_html, mAdapter.getPageContent(PageFragment.getPageIndex(webView)));
                     if (PageFragment.getContentMode(webView) <= PageFragment.MODE_START) {
-                        //mAdapter.reloadToMode(webView, ViewPagerAdapter.getContentMode(webView));
                         String body_color = night ? "'#aaa'" : "'#111'";  // 视频和图片没文字不用变
                         webView.loadUrl("javascript:body_color(" + body_color + ")");  // 注意单引号
                     }
@@ -294,25 +310,25 @@ public class ContentActivity extends AppCompatActivity {
         }
     }
 
-    public int getToolbarState() {
-        return mToolbarState;
+    public int getTitleState() {
+        return mTitleState;
     }
 
-    public int getToolbarHeight() {
+    public int getTitleHeight() {
         return mAppBarLayout.getTotalScrollRange();
     }
 
-    public void setToolbarDoingExpand(boolean expand) {
-        mToolbarDoingExpand = expand;
-        mToolbarDoingCollapse = !expand;
+    public void setTitleDoingExpand(boolean expand) {
+        mTitleDoingExpand = expand;
+        mTitleDoingCollapse = !expand;
     }
 
-    public void setToolBarExpanded(boolean expand) {
-        setToolbarDoingExpand(expand);  // 强制给动画留出时间
+    public void setTitleExpanded(boolean expand) {
+        setTitleDoingExpand(expand);  // 强制给动画留出时间
         mAppBarLayout.setExpanded(expand);
     }
 
-    public void setToolBarVisible(boolean visible) {
+    public void setTitleVisible(boolean visible) {
         final AppBarLayout.LayoutParams params = (AppBarLayout.LayoutParams) mToolbarLayout.getLayoutParams();
         final int toggleFlags = AppBarLayout.LayoutParams.SCROLL_FLAG_EXIT_UNTIL_COLLAPSED;  // scroll取消是一直展开
         if (visible) {
@@ -335,8 +351,25 @@ public class ContentActivity extends AppCompatActivity {
         }
     }
 
+    public void setTitleImage(Bitmap bm, ObjectAnimator anim) {
+        if (mMaskAlpha == 0) {  // 没改过；xml只能设置整体透明度，正好借来解析主题属性
+            mMaskAlpha = (int) (mImageView.getAlpha() * 255);
+            mImageView.setAlpha(1.0f);  // setAlpha(float)是整体透明度；setAlpha(int)是图片的
+            mImageView.setColorFilter(Color.argb(mMaskAlpha, 0, 0, 0));  // 背景透明(null)时不叠加
+            anim.setDuration(200);
+        }
 
-    private void setToolBarListeners() {
+        // TransitionDrawable效果不好，因为ImageView会按其中一张图进行统一拉伸，也不便停止动画
+        mImageView.setTag(bm);
+        mImageView.setImageBitmap(bm);
+
+        float shadow_radius = (bm == null) ? 0f : 20f;  // 有图时给文字加阴影；半径超过25闪退
+        ((TextView) mToolbarLayout.findViewById(R.id.textView_toolbarLayout)).
+                setShadowLayer(shadow_radius, 0, 0, Color.BLACK);
+    }
+
+
+    private void setTitleListener() {
         // 只应在onCreate时，已初始化完毕这些变量后调用！
         mAppBarLayout.addOnOffsetChangedListener(new AppBarLayout.OnOffsetChangedListener() {
             @Override
@@ -344,24 +377,24 @@ public class ContentActivity extends AppCompatActivity {
 //                Log.w(TAG, "offsetChanged: " + verticalOffset + ", scrollY = " + getCurrentWebViewScrollPos());
                 int collapseOffset = mAppBarLayout.getTotalScrollRange();
                 if (verticalOffset >= 0)
-                    mToolbarState = TOOLBAR_EXPANDED;   // 完全展开时offset为0
+                    mTitleState = TITLE_EXPANDED;   // 完全展开时offset为0
                 else if (verticalOffset <= -collapseOffset)
-                    mToolbarState = TOOLBAR_COLLAPSED;  // 完全折叠为-1*高度(隐藏时更负)
+                    mTitleState = TITLE_COLLAPSED;  // 完全折叠为-1*高度(隐藏时更负)
                 else
-                    mToolbarState = TOOLBAR_INTERMEDIATE;
+                    mTitleState = TITLE_INTERMEDIATE;
 
                 // 不允许展开时要阻止手指在标题栏下拉(展开一点再阻止不然会死循环)
-                boolean forceAnimate = mToolbarDoingExpand || mToolbarDoingCollapse;
-                if (mToolbarState != TOOLBAR_COLLAPSED && !forceAnimate) {
+                boolean forceAnimate = mTitleDoingExpand || mTitleDoingCollapse;
+                if (mTitleState != TITLE_COLLAPSED && !forceAnimate) {
                     if (getCurrentWebViewMode() != PageFragment.MODE_START)
                         mAppBarLayout.setExpanded(false, false);  // 有动画会死循环，下面也是
                     if (getCurrentWebViewScrollPos() > 10)  // >0易在滚动微小不同步时突然折叠
                         mAppBarLayout.setExpanded(false, false);  // 查找时也不行(高亮在屏幕底看不到)
                 }
-                if (mToolbarState == TOOLBAR_EXPANDED)
-                    mToolbarDoingExpand = false;  // 展开动画完成再重置
-                if (mToolbarState == TOOLBAR_COLLAPSED)
-                    mToolbarDoingCollapse = false;  // 不要一起重置：开始时一般恰满足对面条件，重置就没了
+                if (mTitleState == TITLE_EXPANDED)
+                    mTitleDoingExpand = false;  // 展开动画完成再重置
+                if (mTitleState == TITLE_COLLAPSED)
+                    mTitleDoingCollapse = false;  // 不要一起重置：开始时一般恰满足对面条件，重置就没了
 
                 // 自带渐变有延时，自己加一层文本透明度渐变，在折叠一半多一点就全透明
                 int alpha = (int) (255 * (1 + 1.5f * verticalOffset / collapseOffset));  // verticalOffset是负数
@@ -377,15 +410,23 @@ public class ContentActivity extends AppCompatActivity {
             public void onClick(View v) {
                 if (getCurrentWebViewMode() == PageFragment.MODE_START &&
                         !MenuItemCompat.isActionViewExpanded(mSearchItem)) {
+                    WebView webView = getCurrentWebView();
                     if (getCurrentWebViewScrollPos() > 10) {
-                        PageFragment.setScrollPos(getCurrentWebView(), 0, true);
-                        // 等上滚动画快结束再展开；注意getScrollY不会立即变0，直接去展开会被阻止
+                        PageFragment.setScrollPos(webView, 0, true);
                         mToolBar.postDelayed(new Runnable() {
                             @Override
-                            public void run() {setToolBarExpanded(true);}
+                            public void run() {setTitleExpanded(true);}
                         }, 200);
-                    } else
-                        setToolBarExpanded(true);  // 不用上滚动画
+                        // 等上滚动画快结束再展开；注意getScrollY不会立即变0，直接去展开会被阻止
+                    } else if (mTitleState != TITLE_EXPANDED) {
+                        setTitleExpanded(true);  // 网页已到顶不用上滚动画
+                    } else {
+                        String link = mAdapter.getPageTitleImageLink(PageFragment.getPageIndex(webView));
+                        if (link != null && webView != null) {  // 有专栏头图才去下
+                            webView.loadUrl("javascript:load_first()");
+                            PageFragment.performClickImage(webView, link);
+                        }
+                    }
                 }
             }
         });
@@ -459,6 +500,7 @@ public class ContentActivity extends AppCompatActivity {
         });
     }
 
+
     @Override
     public void setTitle(CharSequence title) {
         // 若ToolBarLayout用setTitleEnabled(true)则ToolBar的Title不管用
@@ -473,6 +515,7 @@ public class ContentActivity extends AppCompatActivity {
         Log.w(TAG, "onCreate: position = " + getIntent().getIntExtra("position", 0));
         mPreferences = getSharedPreferences("Settings", MODE_PRIVATE);
         PageFragment.setTextZoom(null, mPreferences.getInt("TextZoom", 85));
+        PageFragment.setRichGuy(mPreferences.getBoolean("RichGuy", false));
         PageFragment.setNightTheme(mPreferences.getBoolean("NightTheme", false));
         setTheme(PageFragment.isNightTheme() ? R.style.AppTheme_Night : R.style.AppTheme_NoActionBar);
 
@@ -495,10 +538,27 @@ public class ContentActivity extends AppCompatActivity {
 
         // 要求manifest里设置主题为AppTheme.NoActionBar
         mToolBar = (Toolbar) findViewById(R.id.toolbar_content);
+        mImageView = (ImageView) findViewById(R.id.imageView_title);
         mAppBarLayout = (AppBarLayout) findViewById(R.id.app_bar);
         mToolbarLayout = (CollapsingToolbarLayout) findViewById(R.id.toolbar_layout);
         mToolbarLayout.setExpandedTitleColor(0x00FFFFFF);  // 透明的白色(默认的透明是黑色的)
-        setToolBarListeners();
+        mTitleImageTask = new Runnable() {
+            private ObjectAnimator animator =
+                    ObjectAnimator.ofInt(mImageView, "imageAlpha", 0, 255);
+            @Override
+            public void run() {
+                int pos = mResult.getIntExtra("position", -1);  // 这个比CurrentWebView更新及时
+                Bitmap bitmap = mAdapter.getPageTitleImage(pos);
+                if (bitmap != mImageView.getTag()) setTitleImage(bitmap, animator);  // 都是null不必进去
+                if (bitmap == null && mAdapter.getPageTitleImageLink(pos) != null) {
+                    mAdapter.updateTitleImageAsync(pos);
+                    mImageView.removeCallbacks(this);  // 防止历史遗留问题
+                    mImageView.postDelayed(this, 2000);  // 没拿到图+有需要才再试；退出时会取消
+                    Log.w(TAG, "mTitleImageTask: I will be back in 2 seconds!");
+                }
+            }
+        };
+        setTitleListener();
 
         setSupportActionBar(mToolBar);
         ActionBar actionBar = getSupportActionBar();  // 继承Activity时用getActionBar
@@ -513,7 +573,7 @@ public class ContentActivity extends AppCompatActivity {
         mResult = getIntent();  // 直接利用；下面setCurrentItem用到mResult
         setResult(RESULT_OK, mResult);  // 不换页就返回也得有个结果
 
-        setTitle("加载中...");
+        setTitle(getString(R.string.loading));
         String[] query = (savedInstanceState != null) ? savedInstanceState.getStringArray("query") : null;
         final int position = (savedInstanceState != null) ? savedInstanceState.getInt("position") :
                                                             mResult.getIntExtra("position", 0);
@@ -548,21 +608,22 @@ public class ContentActivity extends AppCompatActivity {
                     mAdapter.removeListener(this);
                     mViewPager.setCurrentItem(position);
                     setTitle(mAdapter.getPageTitle(position));
+                    if (position == 0) mImageView.post(mTitleImageTask);
                     for (int i = 0, n = mViewPager.getChildCount(); i < n; i++) {
+                        // 异步期间可能按url和tag为null加载过，即about:blank
                         WebView webView = (WebView) mViewPager.getChildAt(i).findViewById(R.id.webView_section);
-                        if (webView != null) {  // 异步期间可能按url和tag为null加载过，即about:blank
-                            if (PageFragment.getContentMode(webView) == PageFragment.MODE_BLANK) {
-                                String html = mAdapter.getPageContent(PageFragment.getPageIndex(webView));
-                                webView.setTag(R.id.web_tag_in_html, html);
-                                mAdapter.reloadToMode(webView, PageFragment.MODE_START);
-                            }  // 不用重建数据库时，查数据库比生成窗口快，窗口建好时已能正常加载，不必再刷新
-                        }  // 清内存前Tag也会保存在Fragment的savedInstanceState里…其实整个for只用于意外情况
-                    }
+                        if (PageFragment.getContentMode(webView) == PageFragment.MODE_BLANK) {
+                            String html = mAdapter.getPageContent(PageFragment.getPageIndex(webView));
+                            webView.setTag(R.id.web_tag_in_html, html);
+                            mAdapter.reloadToMode(webView, PageFragment.MODE_START);
+                        }  // 不用重建数据库时，查数据库比生成窗口快，窗口建好时已能正常加载，不必再刷新
+                    }  // 清内存前Tag也会保存在Fragment的savedInstanceState里…其实整个for只用于意外情况
                 }
             });
         } else {
             mViewPager.setCurrentItem(position);  // 非0时顺便触发换页监听
-            setTitle(mAdapter.getPageTitle(position));  // 0页不触发换页监听
+            setTitle(mAdapter.getPageTitle(position));  // 0页则不触发换页监听，要手动来
+            if (position == 0) mImageView.post(mTitleImageTask);  // 较耗时不重复；onCreate里没layout会闪退
         }
     }
 
@@ -625,7 +686,7 @@ public class ContentActivity extends AppCompatActivity {
             @Override
             public boolean onQueryTextSubmit(String query) {
                 mAdapter.setQuery(getCurrentWebView(), query, true);
-                setToolBarExpanded(false);
+                setTitleExpanded(false);
                 return false;
             }
 
@@ -673,7 +734,7 @@ public class ContentActivity extends AppCompatActivity {
                 public boolean onLongClick(View v) {
                     SearchView searchView = (SearchView) MenuItemCompat.getActionView(mSearchItem);
                     mAdapter.setQuery(getCurrentWebView(), searchView.getQuery().toString(), false);
-                    setToolBarExpanded(false);
+                    setTitleExpanded(false);
                     return true;  // 不引发Click
                 }
             });
@@ -720,6 +781,12 @@ public class ContentActivity extends AppCompatActivity {
             case R.id.content_night_mode:
                 PageFragment.toggleNightTheme();
                 mPreferences.edit().putBoolean("NightTheme", PageFragment.isNightTheme()).apply();
+                return true;
+
+            case R.id.content_rich_data:
+                PageFragment.setRichGuy(!PageFragment.isRichGuy());
+                PageFragment.changeCacheMode(getCurrentWebView());
+                mPreferences.edit().putBoolean("RichGuy", PageFragment.isRichGuy()).apply();
                 return true;
 
             case R.id.content_save:
@@ -815,7 +882,7 @@ public class ContentActivity extends AppCompatActivity {
         super.onActionModeStarted(mode);
         if (getCurrentWebViewMode() == PageFragment.MODE_START) {
             PageFragment.setContentMode(getCurrentWebView(), PageFragment.MODE_COPY);
-            setToolBarExpanded(false);
+            setTitleExpanded(false);
         }
     }
 
@@ -848,6 +915,7 @@ public class ContentActivity extends AppCompatActivity {
         Log.w(TAG, "onDestroy");
         super.onDestroy();
         unregisterReceiver(mNetStateReceiver);
+        mImageView.removeCallbacks(mTitleImageTask);
         mAdapter.dbDetach();
         sReference = null;
     }

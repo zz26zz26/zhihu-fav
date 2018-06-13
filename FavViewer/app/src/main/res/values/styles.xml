@@ -12,7 +12,7 @@
         <item name="toolbar_divider">@drawable/toolbar_divider</item>
         <item name="popup_filter_background">@drawable/popup_bg</item>
         <item name="popup_overflow_background">@drawable/popup_menu_bg</item>
-        <item name="menu_night_mode_text">@string/night_mode</item>
+        <item name="toolbar_mask_alpha">@dimen/toolbar_mask_alpha</item>
 
         <!--允许ActionMode覆盖在Toolbar上，防止Activity顶部出现两个上下文操作栏-->
         <item name="windowActionModeOverlay">true</item>
@@ -45,7 +45,7 @@
         <item name="toolbar_divider">@drawable/toolbar_divider_night</item>
         <item name="popup_filter_background">@drawable/popup_bg_night</item>
         <item name="popup_overflow_background">@drawable/popup_menu_bg_night</item>
-        <item name="menu_night_mode_text">@string/stop_night_mode</item>
+        <item name="toolbar_mask_alpha">@dimen/toolbar_mask_alpha_night</item>
 
         <item name="windowActionModeOverlay">true</item>
         <item name="android:windowTranslucentStatus">true</item>

@@ -61,10 +61,12 @@ public class PageFragment extends Fragment {
     static final int MODE_IMAGE = 1;
     static final int MODE_VIDEO = 2;
     static final int MODE_BLANK = 3;
+    static final int MODE_ERROR = 4;
 
     private static int sTextZoom;
     private static int sBackColor;
     private static int sEntryPage;
+    private static boolean sRichGuy;
     private static boolean sNightTheme;
     private static DiskLruCache mCache;
     // 以上static为各Fragment共用
@@ -193,10 +195,10 @@ public class PageFragment extends Fragment {
                 float movY = getYPointerCenter(event) - lastCenterY;  // tracker用加速度预测速度，减速就可能使速度变号
                 float velY = MotionEvent.ACTION_MOVE == action ? movY : 0;  // POINTER_DOWN之类就只改Center不传父级
                 //Log.d(TAG, "NestedScroll         @cy = " + (lastCenterY + movY) + ", y = " + (lastMotionY + velY));
-                int toolbarState = activity.getToolbarState();  // 定了direction就不用thresh了
-                if (toolbarState == ContentActivity.TOOLBAR_INTERMEDIATE ||  // 伸缩中显然要给标题栏
-                        toolbarState == ContentActivity.TOOLBAR_EXPANDED && velY < 0 ||
-                        toolbarState == ContentActivity.TOOLBAR_COLLAPSED && webView.getScrollY() == 0 && velY > 0) {
+                int titleState = activity.getTitleState();  // 定了direction就不用thresh了
+                if (titleState == ContentActivity.TITLE_INTERMEDIATE ||  // 伸缩中显然要给标题栏
+                        titleState == ContentActivity.TITLE_EXPANDED && velY < 0 ||
+                        titleState == ContentActivity.TITLE_COLLAPSED && webView.getScrollY() == 0 && velY > 0) {
                     if (!inNestedScroll && MotionEvent.ACTION_UP != action) {
                         parentEvent.setAction(MotionEvent.ACTION_DOWN);  // DOWN可重置积累的下滑距离
                         Log.d(TAG, "NestedScroll DOWN    @vy = " + velY);  // 但CANCEL自己后就不动了
@@ -219,12 +221,12 @@ public class PageFragment extends Fragment {
                     }
                     inNestedScroll = false;
                 }
-                if (MotionEvent.ACTION_UP == action && ContentActivity.TOOLBAR_EXPANDED != toolbarState && 0 == webView.getScrollY()) {
+                if (MotionEvent.ACTION_UP == action && ContentActivity.TITLE_EXPANDED != titleState && 0 == webView.getScrollY()) {
                     // 以前用上滑够快就让网页响应滚动来触发fling，但手指轻触快速上滑时会出现网页在滚而标题栏折一点又展开了
                     tracker.computeCurrentVelocity(1000, config.getScaledMaximumFlingVelocity());  // 不限制能一口气滑到底
-                    int minFlingVel = Math.max(config.getScaledMinimumFlingVelocity(), activity.getToolbarHeight()) * 20;
+                    int minFlingVel = Math.max(config.getScaledMinimumFlingVelocity(), activity.getTitleHeight()) * 20;
                     if (tracker.getYVelocity() < -minFlingVel) {  // 至少要能把标题栏折叠完才能开始fling
-                        activity.setToolBarExpanded(false);
+                        activity.setTitleExpanded(false);
                         startFlingScroll(webView);
                     }
                 }
@@ -321,9 +323,7 @@ public class PageFragment extends Fragment {
                                             currentTime - touchDownTime < 500 &&  // 长按不行(ViewConfiguration.getLongPressTimeout()
                                             currentTime - touchDownTime > 10 &&   // 机按不行(人超轻触可4ms但不自然)
                                             currentTime - touchUpTime > 600) {    // 连击不行(免得生成太多异步)
-                                        new RawImageLoader(PageFragment.this).executeOnExecutor(
-                                                AsyncTask.THREAD_POOL_EXECUTOR, result.getExtra(),
-                                                (String) webView.getTag(R.id.web_tag_in_html));
+                                        performClickImage(webView, result.getExtra());
                                         currentTime -= 300;  // 防止点开图片后马上再点一次就放大
                                     }
                                 }
@@ -678,8 +678,8 @@ public class PageFragment extends Fragment {
 
             loadImagePage(webView, s);
             ContentActivity activity = ContentActivity.getReference();
-            if (activity != null) {  // 0.1M以上的才显示文件大小
-                String extra = contentLength > 1.1e5 ? ((contentLength * 10 >> 20) * .1f) + "M的" : "";
+            if (activity != null) {  // 0.1M以上的才显示文件大小；直接float算可能出0.500001之类的数字
+                String extra = contentLength > .11e6 ? (float) ((contentLength * 10 >> 20) * .1) + "M的" : "";
                 String msg = s.substring(s.lastIndexOf('.') + 1).toUpperCase().equals("GIF") ?
                         "其实是我" + extra + "GIF哒" :
                         "其实我还有" + extra + "大图哒";
@@ -721,22 +721,27 @@ public class PageFragment extends Fragment {
         return url.substring(url.lastIndexOf('/') + 1);
     }
 
+    public static File getUrlCache(String url) {
+        String file_name = getUrlHash(url);
+        DiskLruCache.Snapshot snapshot = null;
+        try {
+            if ((snapshot = mCache.get(file_name)) != null) {
+                return new File(mCache.getDirectory(), file_name + ".0");
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "getContentCache: " + e.toString());
+        } finally {
+            if (snapshot != null) {
+                snapshot.close();
+            }
+        }
+        return null;
+    }
+
     public static File getContentCache(WebView webView) {
         if (webView != null && getContentMode(webView) == MODE_IMAGE) {
             String url = (String) webView.getTag(R.id.web_tag_url);
-            String file_name = getUrlHash(url);
-            DiskLruCache.Snapshot snapshot = null;
-            try {
-                if ((snapshot = mCache.get(file_name)) != null) {
-                    return new File(mCache.getDirectory(), file_name + ".0");
-                }
-            } catch (IOException e) {
-                Log.e(TAG, "getContentCache: " + e.toString());
-            } finally {
-                if (snapshot != null) {
-                    snapshot.close();
-                }
-            }
+            return getUrlCache(url);
         }
         return null;
     }
@@ -770,6 +775,14 @@ public class PageFragment extends Fragment {
             }
             mCache = null;
         }
+    }
+
+    public static boolean isRichGuy() {
+        return sRichGuy;
+    }
+
+    public static void setRichGuy(boolean rich) {
+        sRichGuy = rich;
     }
 
     public static boolean isNightTheme() {
@@ -812,7 +825,7 @@ public class PageFragment extends Fragment {
     public static int getContentMode(WebView webView) {
         if (webView != null)
             return (int) webView.getTag(R.id.web_tag_mode);
-        return 0;
+        return MODE_ERROR;  // 挺多if里用小于等于START判断模式，只好用大的表示出错
     }
 
     public static void setContentMode(WebView webView, int mode) {
@@ -822,8 +835,6 @@ public class PageFragment extends Fragment {
 
     public static int getScrollPos(WebView webView) {
         if (webView != null) {
-//            View scroller = (View) webView.getParent();
-//            return scroller.getScrollY();
             return webView.getScrollY();
         }
         return 0;
@@ -932,7 +943,7 @@ public class PageFragment extends Fragment {
 
         ContentActivity activity = ContentActivity.getReference();
         if (activity != null) {
-            activity.setToolBarExpanded(false);
+            activity.setTitleExpanded(false);
             activity.closeSearchView();
         }
     }
@@ -956,9 +967,17 @@ public class PageFragment extends Fragment {
 
         ContentActivity activity = ContentActivity.getReference();
         if (activity != null) {
-            activity.setToolBarExpanded(false);
+            activity.setTitleExpanded(false);
             activity.closeSearchView();
         }
+    }
+
+    public static void performClickImage(WebView webView, String url) {
+        if (webView == null || TextUtils.isEmpty(url)) return;
+        PageFragment fragment = (PageFragment) webView.getTag(R.id.web_tag_fragment);
+        if (fragment == null) return;
+        String html = (String) webView.getTag(R.id.web_tag_in_html);
+        new RawImageLoader(fragment).executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, url, html);
     }
 
     public static void changeCacheMode(final WebView webView) {
@@ -972,7 +991,10 @@ public class PageFragment extends Fragment {
                     public void run() {
                         if (getContentMode(webView) == MODE_START) {
                             fragment.mCacheOnly = false;  // 改了这个不管流量或wifi都会下载，不改则点击图片不能下载
-                            if (ConnectivityState.isWifi) {  // 不然开wifi后页面首屏内有图也不加载
+                            if (sRichGuy) {
+                                Log.w(TAG, "changeCacheMode: active_load " + webView.getTag(R.id.web_tag_url));
+                                webView.loadUrl("javascript:active_load()");
+                            } else if (ConnectivityState.isWifi) {  // 不然开wifi后页面首屏内有图也不加载
                                 Log.w(TAG, "changeCacheMode: enable_load " + webView.getTag(R.id.web_tag_url));
                                 webView.loadUrl("javascript:lazy_load()");  // PageFinish后才能调js
                                 webView.loadUrl("javascript:enable_load()");
@@ -1010,7 +1032,7 @@ public class PageFragment extends Fragment {
 
             ContentActivity activity = ContentActivity.getReference();
             if (activity != null && webView.getScrollY() > 0)
-                activity.setToolBarExpanded(false);
+                activity.setTitleExpanded(false);
         }
     }
 
