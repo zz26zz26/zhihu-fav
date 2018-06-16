@@ -69,12 +69,9 @@ class ListViewAdapter extends BaseAdapter {
                 mDataSource = new SQLiteHelper(mContext.getExternalFilesDir(null));
             }  // getExternalFilesDir帮建目录；若访问SD卡的根要权限
 
-            addListener(new SQLiteHelper.AsyncTaskListener() {
+            addListener(new SQLiteHelper.SimpleAsyncTaskListener() {
                 @Override
-                public void onStart(AsyncTask task) {}
-
-                @Override
-                public void onAsyncFinish(AsyncTask task) {
+                public void onAsyncDone(AsyncTask task) {
                     onDataSourceUpdated(task);
                 }
 
@@ -302,7 +299,7 @@ class ListViewAdapter extends BaseAdapter {
         return html;
     }
 
-    private void onDataSourceUpdated(AsyncTask task) {
+    private void onDataSourceUpdated(AsyncTask task) {  // 会造成卡顿，需要异步
         String text = getQueryText();
         String field = getQueryField();
         Pattern filter = null;  // \Q \E间原样匹配，否则若输入中含( [之类会闪退；注意4个\
@@ -314,15 +311,14 @@ class ListViewAdapter extends BaseAdapter {
 
         int count = mDataSource.getCount();  // 只处理新增的部分
         for (int i = mCount; i < count; i++) {
-            if (task != null && task.isCancelled()) break;
+            if (task.isCancelled()) break;
             filterData((String[]) getItem(i), filter, field);
         }
-        if (!field.contains("revision")) {
-            if (task == null || !task.isCancelled())
-                formatTimeInfo(true);  // 前面弄出来的就是false的样式
+        if (!field.contains("revision") && !task.isCancelled()) {
+            formatTimeInfo(true);  // 前面弄出来的就是false的样式
         }
 
-        if (task != null && task.isCancelled()) {
+        if (task.isCancelled()) {
             clear();
         }
     }

@@ -96,7 +96,7 @@ public class PageFragment extends Fragment {
                     @Override
                     public void run() {
                         if (inNestedFling && getContentMode(v) == MODE_START && v.getScrollY() != lastScrollY) {
-                            v.postDelayed(flingChecker, 250);  // 检查inNestedFling防止手动滑动时还去post
+                            v.postDelayed(this, 250);  // 检查inNestedFling防止手动滑动时还去post
                             lastScrollY = v.getScrollY();  // 检查MODE防止destroy或开图片还去post
                             //Log.d(TAG, "WebView flinging");
                         } else inNestedFling = false;

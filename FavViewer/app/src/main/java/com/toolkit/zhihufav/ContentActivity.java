@@ -127,15 +127,6 @@ public class ContentActivity extends AppCompatActivity {
         return PageFragment.getContentMode(getCurrentWebView());
     }
 
-    private int getStatusBarHeight() {
-        int result = 0;  // @android:dimen/status_bar_height是系统私有属性
-        int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
-        if (resourceId > 0) {
-            result = getResources().getDimensionPixelSize(resourceId);
-        }
-        return result;
-    }
-
     private void reloadCurrentWebView(int target_mode) {
         mAdapter.reloadToMode(getCurrentWebView(), target_mode);
     }
@@ -153,6 +144,15 @@ public class ContentActivity extends AppCompatActivity {
             } // else == MODE_START
         }
         return false;  // false表示没有处理，给外层
+    }
+
+    private int getStatusBarHeight() {
+        int result = 0;  // @android:dimen/status_bar_height是系统私有属性
+        int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        if (resourceId > 0) {
+            result = getResources().getDimensionPixelSize(resourceId);
+        }
+        return result;
     }
 
     private void hideInputMethod() {
@@ -234,19 +234,6 @@ public class ContentActivity extends AppCompatActivity {
         popupWindow.setWidth(ViewGroup.LayoutParams.WRAP_CONTENT);
         popupWindow.setHeight(ViewGroup.LayoutParams.WRAP_CONTENT);  // find不到时抛异常
         popupWindow.showAtLocation(findViewById(R.id.content_menu_entry), Gravity.TOP | Gravity.END, 0, 0);
-    }
-
-    private void updateTitleBackground() {
-        Bitmap cache = null;
-        Drawable background = mImageView.getBackground();  // 位图占内存，不用背景时不截图
-        if (mImageView.getTag() != null || (background != null && background.getAlpha() > 0)) {
-            mImageView.buildDrawingCache();  // 此前不能recycle图片和背景，有图时draw最耗时，只能在UI线程
-            cache = Bitmap.createBitmap(mImageView.getDrawingCache());  // 内存中复制一份
-            mImageView.destroyDrawingCache();  // recycle本次cache的bitmap，不然下次还是这张图
-        }
-        if (background instanceof BitmapDrawable)  // null进不来；getBitmap保证非空
-            ((BitmapDrawable) background).getBitmap().recycle();  // 改背景重置透明度
-        mImageView.setBackground(cache == null ? null : new BitmapDrawable(getResources(), cache));
     }
 
 
@@ -405,6 +392,19 @@ public class ContentActivity extends AppCompatActivity {
                 setShadowLayer(shadow_radius, 0, 0, Color.DKGRAY);
     }
 
+
+    private void updateTitleBackground() {
+        Bitmap cache = null;
+        Drawable background = mImageView.getBackground();  // 位图占内存，不用背景时不截图
+        if (mImageView.getTag() != null || (background != null && background.getAlpha() > 0)) {
+            mImageView.buildDrawingCache();  // 此前不能recycle图片和背景，有图时draw最耗时，只能在UI线程
+            cache = Bitmap.createBitmap(mImageView.getDrawingCache());  // 内存中复制一份
+            mImageView.destroyDrawingCache();  // recycle本次cache的bitmap，不然下次还是这张图
+        }
+        if (background instanceof BitmapDrawable)  // null进不来；getBitmap保证非空
+            ((BitmapDrawable) background).getBitmap().recycle();  // 改背景重置透明度
+        mImageView.setBackground(cache == null ? null : new BitmapDrawable(getResources(), cache));
+    }
 
     private void setTitleListener() {
         // 只应在onCreate时，已初始化完毕这些变量后调用！
@@ -590,8 +590,8 @@ public class ContentActivity extends AppCompatActivity {
                 if (bitmap == null && mAdapter.getPageTitleImageLink(pos) != null) {
                     mAdapter.updateTitleImageAsync(pos);
                     mImageView.removeCallbacks(this);  // 防止历史遗留问题
-                    mImageView.postDelayed(this, 2000);  // 没拿到图+有需要才再试；退出时会取消
-                    Log.w(TAG, "mTitleImageTask: I will be back in 2 seconds!");
+                    mImageView.postDelayed(this, 1500);  // 没拿到图+有需要才再试；退出时会取消
+                    Log.w(TAG, "mTitleImageTask: I will be back in 1.5 seconds!");
                 }
             }
         };
@@ -628,18 +628,8 @@ public class ContentActivity extends AppCompatActivity {
 
         // 清内存重入需要add，而从main点进来时不用
         if (position + 1 > mAdapter.getCount()) {  // position+1才是数量，正数才会执行(被删库时得久一点)
-            mAdapter.addSomeAsync(position + 1 - mAdapter.getCount());
-            mAdapter.addListener(new SQLiteHelper.AsyncTaskListener() {  // 加在adapter的notify的监听后
-                @Override
-                public void onStart(AsyncTask task) {}
-
-                @Override
-                public void onAsyncFinish(AsyncTask task) {
-                    if (task.isCancelled()) {
-                        mAdapter.removeListener(this);
-                    }
-                }
-
+            mAdapter.addSomeAsync(position + 1 - mAdapter.getCount());  // 加在adapter的notify的监听后
+            mAdapter.addListener(new SQLiteHelper.SimpleAsyncTaskListener() {
                 @Override
                 public void onFinish(AsyncTask task) {
                     mAdapter.removeListener(this);
@@ -655,6 +645,11 @@ public class ContentActivity extends AppCompatActivity {
                             mAdapter.reloadToMode(webView, PageFragment.MODE_START);
                         }  // 不用重建数据库时，查数据库比生成窗口快，窗口建好时已能正常加载，不必再刷新
                     }  // 清内存前Tag也会保存在Fragment的savedInstanceState里…其实整个for只用于意外情况
+                }
+
+                @Override
+                public void onCancel(AsyncTask task) {
+                    mAdapter.removeListener(this);
                 }
             });
         } else {

@@ -1,6 +1,7 @@
 package com.toolkit.zhihufav;
 
 import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.TimeInterpolator;
 import android.content.Context;
 import android.content.Intent;
@@ -67,7 +68,7 @@ public class MainActivity extends AppCompatActivity {
     private ListViewAdapter mAdapter;
 
     private String[] mFolderList;                // 筛选窗口收藏夹列表，使删库重建中也能改夜间模式
-    private Runnable mPendingQueryTask;          // 回桌面被清内存后可能重新赋值，removeCallback不掉
+    private Runnable mPendingQueryTask;          // 等查找内容文本稳定后再去查询
     private ArrayList<QueryInfo> mQueryHistory;  // 发起新查询时保存之前看到的位置
     private boolean mPopHistoryOnRecreate;       // 清内存重入时恢复，区别于切窗口/回桌面之类
     private static WeakReference<Context> sReference;
@@ -418,23 +419,18 @@ public class MainActivity extends AppCompatActivity {
         mQueryText = info.key;  // 重启时让onCreateOptionsMenu继续处理；关闭搜索框时把此值置空
         mAdapter.setQuery(info.key, info.field, info.type, info.sort);  // 若需要则清空，getCount为0
         mAdapter.addSomeAsync(info.position + 10 - mAdapter.getCount());  // 没清空时不必加载太多
-        mAdapter.addListener(new SQLiteHelper.AsyncTaskListener() {
-                @Override
-                public void onStart(AsyncTask task) {}
+        mAdapter.addListener(new SQLiteHelper.SimpleAsyncTaskListener() {
+            @Override
+            public void onFinish(AsyncTask task) {
+                mAdapter.removeListener(this);  // 一定要丢掉不然滑到底会乱跳
+                setListViewSelection(info.position, info.offset);
+            }
 
-                @Override
-                public void onAsyncFinish(AsyncTask task) {
-                    if (task.isCancelled()) {
-                        mAdapter.removeListener(this);  // 嗯用一次就丢
-                    }
-                }
-
-                @Override
-                public void onFinish(AsyncTask task) {
-                    mAdapter.removeListener(this);  // 一定要丢掉不然滑到底会乱跳
-                    setListViewSelection(info.position, info.offset);
-                }
-            });  // 没加载也可能要滚动
+            @Override
+            public void onCancel(AsyncTask task) {
+                mAdapter.removeListener(this);
+            }
+        });  // 没加载也可能要滚动
         setFilterIcon();  // 重启时这里的MenuItem是null，之后onCreateOptionsMenu还有一次
         Log.w(TAG, "popQueryHistory, size = " + mQueryHistory.size());
     }
@@ -534,23 +530,13 @@ public class MainActivity extends AppCompatActivity {
                 return t * t * t * t * t + 1.0f;
             }
         });
-        view.animate().setListener(new Animator.AnimatorListener() {
-            @Override
-            public void onAnimationStart(Animator animation) {}
-
+        view.animate().setListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
                 if (view.getTranslationX() == view.getWidth()) {
                     window.dismiss();
-//                    Log.w("onAnimationEnd", "window dismissed");
                 }
             }
-
-            @Override
-            public void onAnimationCancel(Animator animation) {}
-
-            @Override
-            public void onAnimationRepeat(Animator animation) {}
         });
 
         // 底部按钮点击事件
@@ -870,34 +856,28 @@ public class MainActivity extends AppCompatActivity {
         };
 
         mAdapter.dbOpen();  // 可能是异步操作；其他的listener要在open后添加getCount才准
-        mAdapter.addListener(new SQLiteHelper.AsyncTaskListener() {
+        mAdapter.addListener(new SQLiteHelper.SimpleAsyncTaskListener() {
             @Override
             public void onStart(AsyncTask task) {
                 setFooterViewProgress(0.0);
             }
 
             @Override
-            public void onAsyncFinish(AsyncTask task) {}
-
-            @Override
             public void onFinish(AsyncTask task) {
                 setFooterViewProgress(mAdapter.hasMore() ? 0.0 : 1.0);  // adapter要notify后getCount才准
             }
         });
-        mAdapter.addListener(new SQLiteHelper.AsyncTaskListener() {
-            @Override
-            public void onStart(AsyncTask task) {}
-
-            @Override
-            public void onAsyncFinish(AsyncTask task) {}
-
+        mAdapter.addListener(new SQLiteHelper.SimpleAsyncTaskListener() {
             @Override
             public void onFinish(AsyncTask task) {
-                mAdapter.removeListener(this);
+                mAdapter.removeListener(this);  // 筛选窗口初始化，能完成才取消
                 mFolderList = mAdapter.getFolderName();  // 数据库开完才能获取收藏夹列表
                 mPopupWindow = newPopupWindow();  // 会用到上面的收藏夹列表
             }
-        });  // 一次性的筛选窗口初始化
+
+            @Override
+            public void onCancel(AsyncTask task) {}  // 注意取消时不要remove
+        });
         if (savedInstanceState == null) {
             mAdapter.addSomeAsync();  // 若数据库为空在上面异步完成后也会调用
         } else {

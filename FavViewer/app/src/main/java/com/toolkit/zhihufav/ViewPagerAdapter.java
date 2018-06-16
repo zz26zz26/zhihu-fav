@@ -90,17 +90,9 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
         } else {
             mDataSource = new SQLiteHelper(mContext.getExternalFilesDir(null));
         }
-        mTaskListener = new SQLiteHelper.AsyncTaskListener() {
+        mTaskListener = new SQLiteHelper.SimpleAsyncTaskListener() {
             @Override
-            public void onStart(AsyncTask task) {}
-
-            @Override
-            public void onAsyncFinish(AsyncTask task) {}
-
-            @Override
-            public void onFinish(AsyncTask task) {
-                notifyDataSetChanged();
-            }
+            public void onFinish(AsyncTask task) {notifyDataSetChanged();}
         };
         addListener(mTaskListener);
 

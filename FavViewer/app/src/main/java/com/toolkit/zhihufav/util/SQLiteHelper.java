@@ -59,8 +59,23 @@ public class SQLiteHelper {
 
     public interface AsyncTaskListener {
         void onStart(AsyncTask task);        // UI线程
-        void onAsyncFinish(AsyncTask task);  // 非UI线程，取消时也会调用
+        void onAsyncDone(AsyncTask task);    // 非UI线程，取消时也会调用
         void onFinish(AsyncTask task);       // UI线程
+        void onCancel(AsyncTask task);       // UI线程
+    }
+
+    public static class SimpleAsyncTaskListener implements AsyncTaskListener {
+        @Override
+        public void onStart(AsyncTask task) {}
+
+        @Override
+        public void onAsyncDone(AsyncTask task) {}
+
+        @Override
+        public void onFinish(AsyncTask task) {}
+
+        @Override
+        public void onCancel(AsyncTask task) {}
     }
 
     public static SQLiteHelper getReference() {
@@ -436,6 +451,7 @@ public class SQLiteHelper {
         private final int PHASE_START = 0;
         private final int PHASE_ASYNC = 1;
         private final int PHASE_FINISH = 2;
+        private final int PHASE_CANCEL = 3;
 
         private void listenerIterator(int phase) {
             if (mTaskListener != null) {
@@ -445,10 +461,13 @@ public class SQLiteHelper {
                             mTaskListener.get(i).onStart(this);
                             break;
                         case PHASE_ASYNC:
-                            mTaskListener.get(i).onAsyncFinish(this);
+                            mTaskListener.get(i).onAsyncDone(this);
                             break;
                         case PHASE_FINISH:
                             mTaskListener.get(i).onFinish(this);
+                            break;
+                        case PHASE_CANCEL:
+                            mTaskListener.get(i).onCancel(this);
                             break;
                     }
 
@@ -563,11 +582,18 @@ public class SQLiteHelper {
             listenerIterator(PHASE_FINISH);
         }
 
-        // 取消完成才能clear，而不能只放在setQuery里标记取消后立即执行
-        // 如标记取消时异步数据库恰好取到最后一组，则hasMore刚重置又被改成false，下个task直接返回空数组
+        @Override
+        protected void onCancelled() {
+            super.onCancelled();
+            listenerIterator(PHASE_CANCEL);
 
-        // 然而clear()放onCancelled也不行，考虑async取消后马上开了新的，但UI线程迟迟不onCancelled和clear
-        // 然后getRaw还是用之前的offset导致没有数据，这些完成后才执行clear又把处理一半的数据删了
+            // ListViewAdapter的注意事项：取消完成才能clear，而不能只放在setQuery里标记取消后立即执行
+            // 如标记取消时异步数据库恰好取到最后一组，则hasMore刚重置又被改成false，下个task直接返回空数组
+
+            // 然而clear()放onCancelled也不行，考虑async取消后马上开了新的，但UI线程迟迟不onCancelled和clear
+            // 然后getRaw还是用之前的offset导致没有数据，这些完成后才执行clear又把处理一半的数据删了
+        }
+
     }
 
     // 可能退出后还要把文件加载完，需要static(不隐含引用外部类)和WeakReference防止内存泄漏
