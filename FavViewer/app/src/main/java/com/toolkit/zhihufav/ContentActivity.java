@@ -462,6 +462,8 @@ public class ContentActivity extends AppCompatActivity {
                         if (link != null && webView != null) {  // 有专栏头图才去下
                             webView.loadUrl("javascript:load_first()");
                             PageFragment.performClickImage(webView, link);
+                            mImageView.removeCallbacks(mTitleImageTask);  // 有delayed就要防止按太快
+                            mImageView.postDelayed(mTitleImageTask, 1000);  // 下载要时间
                         }
                     }
                 }
@@ -561,15 +563,6 @@ public class ContentActivity extends AppCompatActivity {
         setContentView(R.layout.activity_content);
         sReference = new WeakReference<Context>(this);
 
-        mNetStateReceiver = new ConnectivityState(this);
-        mNetStateReceiver.setListener(new ConnectivityState.OnStateChangeListener() {
-            @Override
-            public void onChanged() {
-                PageFragment.changeCacheMode(getCurrentWebView());  // 隔壁页换到时会调整下载策略
-            }
-        });
-        registerReceiver(mNetStateReceiver, new IntentFilter("android.net.conn.CONNECTIVITY_CHANGE"));
-
         NestedScrollView scrollView = (NestedScrollView) findViewById(R.id.scroll_container);
         scrollView.setFillViewport(true);  // 这个设置是必须的，否则里面的ViewPager不可见
 
@@ -588,8 +581,9 @@ public class ContentActivity extends AppCompatActivity {
                 Bitmap bitmap = mAdapter.getPageTitleImage(pos);
                 if (bitmap != mImageView.getTag()) setTitleImage(bitmap, animator);  // 都是null不必进去
                 if (bitmap == null && mAdapter.getPageTitleImageLink(pos) != null) {
+                    if (ConnectivityState.network == 0) return;  // 流量还能手动下，没网就真的算了
                     mAdapter.updateTitleImageAsync(pos);
-                    mImageView.removeCallbacks(this);  // 防止历史遗留问题
+                    mImageView.removeCallbacks(this);  // 防止按太快出历史遗留问题
                     mImageView.postDelayed(this, 1500);  // 没拿到图+有需要才再试；退出时会取消
                     Log.w(TAG, "mTitleImageTask: I will be back in 1.5 seconds!");
                 }
@@ -606,6 +600,17 @@ public class ContentActivity extends AppCompatActivity {
         ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) mToolBar.getLayoutParams();
         params.topMargin = getStatusBarHeight();  // 想在透明状态栏显示图片，需手动把标题栏往下挪
         mToolBar.setLayoutParams(params);         // 用fitsSystemWindows则状态栏的位置只能空在那
+
+        mNetStateReceiver = new ConnectivityState(this);
+        mNetStateReceiver.setListener(new ConnectivityState.OnStateChangeListener() {
+            @Override
+            public void onChanged() {
+                PageFragment.changeCacheMode(getCurrentWebView());  // 两边的页换到时会调整下载策略
+                if (PageFragment.isRichGuy() || ConnectivityState.isWifi) mImageView.post(mTitleImageTask);
+                else mImageView.removeCallbacks(mTitleImageTask);  // 飞行模式啥的；上面换模式时会下图
+            }
+        });
+        registerReceiver(mNetStateReceiver, new IntentFilter("android.net.conn.CONNECTIVITY_CHANGE"));
 
         mResult = getIntent();  // 直接利用；下面setCurrentItem用到mResult
         setResult(RESULT_OK, mResult);  // 不换页就返回也得有个结果
@@ -707,6 +712,12 @@ public class ContentActivity extends AppCompatActivity {
         super.onSaveInstanceState(outState);
         outState.putInt("position", mResult.getIntExtra("position", 0));
         outState.putStringArray("query", mAdapter.getBaseQuery());
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        mImageView.removeCallbacks(mTitleImageTask);
     }
 
     @Override
@@ -823,6 +834,7 @@ public class ContentActivity extends AppCompatActivity {
             case R.id.content_rich_data:
                 PageFragment.setRichGuy(!PageFragment.isRichGuy());
                 PageFragment.changeCacheMode(getCurrentWebView());
+                if (PageFragment.isRichGuy()) mImageView.post(mTitleImageTask);
                 mPreferences.edit().putBoolean("RichGuy", PageFragment.isRichGuy()).apply();
                 return true;
 
