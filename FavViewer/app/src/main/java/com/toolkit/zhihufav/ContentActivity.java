@@ -674,6 +674,11 @@ public class ContentActivity extends AppCompatActivity {
         TextView oldTitle = (TextView) mToolbarLayout.findViewById(R.id.textView_toolbarLayout);
         TextView newTitle = (TextView) newToolbarLayout.findViewById(R.id.textView_toolbarLayout);
 
+        // 先把状态栏高度加上去
+        ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) newToolBar.getLayoutParams();
+        params.topMargin = getStatusBarHeight();
+        newToolBar.setLayoutParams(params);
+
         // 主要是多处关联的app_bar_height、actionBarSize和字体大小会改变
         mAppBarLayout.setLayoutParams(newAppBarLayout.getLayoutParams());
         mToolbarLayout.setLayoutParams(newToolbarLayout.getLayoutParams());
