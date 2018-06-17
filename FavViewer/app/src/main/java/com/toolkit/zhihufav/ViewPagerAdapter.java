@@ -318,10 +318,9 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
         String rule_color = " #aaa;";  // <hr>颜色，保留开头空格和结尾分号，日间不能太暗
         String note_color = "color:#777;";  // 图片说明文字和末尾答案信息颜色，日夜都能看清
         String block_back = "background:rgba(128,128,128,.1);";  // 底色即gray，之前是night ?"#333":"whitesmoke"
-        String body_color = PageFragment.isNightTheme() ? "color:darkgray;" : "color:#111;";  // 正文颜色，夜间不要纯白不然刺眼
         String first_figure = link.startsWith("zhuanlan") ? "body>figure:first-child { display:none }" : "";  // 头图无边距margin-top:-1em;
 
-        String css = "body { margin:1em 1.25em; word-wrap:break-word; line-height:1.6; font-size:16px;" + body_color + "}" +
+        String css = "body { margin:1em 1.25em; word-wrap:break-word; line-height:1.6; font-size:16px; }" +
                      "blockquote { margin:1em 0; padding-left:0.7em; color:lightslategray; border-left:0.3em solid; }" +
                      "figure { position:relative; margin:16px -1.25em; }  blockquote figure { margin:16px -0.5em }" + first_figure +
                      "figure.gif-container::after { position:absolute; left:50%; top:50%; transform:translate(-52%,-45%); color:whitesmoke;" +
@@ -347,7 +346,6 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
                      "<br>编辑于 " + getPageDate(position) + "</p>" +
 
                      "<script>" +
-                     "function body_color(c) { document.getElementsByTagName('body')[0].style.color = c; }" +
                      "function on_init() {" +
                      "    var img = document.getElementsByTagName('img');" +
                      "    var len = img.length;" +  // for-in会把元素属性一起遍历，for-of要5.1的浏览器才支持
@@ -421,7 +419,19 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
                      "        }" +
                      "    }" +
                      "}" +
+                     "function set_theme(t) {" +
+                     "    var night = t;" +  // true即夜间
+                     "    var img = ImageArray;" +  // 夜间把图片弄透明点不那么亮，公式和文字也要变色
+                     "    document.getElementsByTagName('body')[0].style.color = night ? 'darkgray':'#111';" +
+                     "    for (var i = 0; i < img.length; i++) {" +
+                     "        if (img[i].hasAttribute('eeimg'))" +  // 0xa9/0xff = 66%, 0x11/0xff = 6.6%
+                     "            img[i].style.WebkitFilter = night ? 'invert(66%)' : 'invert(6.6%)';" +  // .filter不行
+                     "        else" +
+                     "            img[i].style.opacity = night ? 0.6 : 1.0;" +
+                     "    }" +
+                     "}" +
                      "on_init();" +  // 默认不开启滚动时自动加载图片
+                     "set_theme(" + PageFragment.isNightTheme() + ");" +
                      "console.log('Javascript initialized.');" +
                      "</script>";
         //"<noscript>Javascript unavailable.</noscript>"  // 旧版遇src=""会请求当前页面url；没有src直接没图
@@ -429,7 +439,7 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
         // 处理了<pre>内容与ViewPager左右滑动时的冲突(估计要js设置点击事件)，才能让代码块不换行显示
         // 但是有些<pre>块一行太长，且一般不分代码或文本，不便于判断滑动…还不如横屏
 
-        String head = "<head><style>" + css + "</style></head>";
+        String head = "<head><style>" + css + "</style></head>";  // <meta charset="utf-8" />
         String body = "<body>" + content_html + end + "</body>";
         // 之前用替换宽度为100%的方法使图片尺寸适合屏幕(没width属性的仍过大)
         //body = body.replaceAll("(<\\w+[^>]+ width=\")\\d*(\"[^>]+>)", "$1100%$2");  // $后只看第一个数字

@@ -900,7 +900,6 @@ public class PageFragment extends Fragment {
         WebSettings settings = webView.getSettings();
         settings.setTextZoom(sTextZoom);  // 不然等划完了才缩放不好看
         settings.setBuiltInZoomControls(false);  // 禁止手动缩放
-        settings.setJavaScriptEnabled(true);  // 夜间模式和懒加载还是得用
         String html = (String) webView.getTag(R.id.web_tag_in_html);
         webView.loadDataWithBaseURL(url, html, "text/html", "utf-8", null);
         // 点击外链/公式图链接时，baseUrl不完整不触发shouldOverrideUrlLoading，至少要http://www.zhihu.com
@@ -920,7 +919,8 @@ public class PageFragment extends Fragment {
 
         storeScrollPos(webView);  // 里面有判断，图片刷新时不改
         setContentMode(webView, MODE_IMAGE);
-        String color = "rgba(128,128,128,0.1)";  // 同<pre>标签背景，注意不要"background:"和";"
+        String color = "rgba(128,128,128, .1)";  // 同<pre>标签背景，注意不要"background:"和";"
+        if (url.contains("equation?tex=")) color = "rgba(255,255,255, .2)";  // svg作背景改不了颜色
         String html = "<html><body style=\"margin:0\">" +
 //                          "<img src=\"" + url + "\" width=\"100%\" " +
 //                          "style=\"position:absolute; display:block; " +
@@ -937,7 +937,6 @@ public class PageFragment extends Fragment {
         settings.setSupportZoom(true);          // 默认开
         settings.setBuiltInZoomControls(true);  // 默认关
         settings.setDisplayZoomControls(false); // 开上面默认开
-        settings.setJavaScriptEnabled(false);   // 图片不给用
         webView.setTag(R.id.web_tag_url, url);
         webView.loadDataWithBaseURL(url, html, "text/html", "utf-8", null);
 
@@ -963,7 +962,6 @@ public class PageFragment extends Fragment {
         storeScrollPos(webView);  // 里面有判断，重定向时不改
         setContentMode(webView, MODE_VIDEO);
         webView.setTag(R.id.web_tag_url, url);
-        webView.getSettings().setJavaScriptEnabled(true);
 
         ContentActivity activity = ContentActivity.getReference();
         if (activity != null) {
@@ -1054,6 +1052,8 @@ public class PageFragment extends Fragment {
         webView.setWebViewClient(new CachedWebViewClient());
         webView.setOnTouchListener(new OnTouchListener());
         webView.setBackgroundColor(sBackColor);  // 防夜间快速换页时闪过白色，xml里WebView的background没用
+        webView.getSettings().setJavaScriptEnabled(true);  // 夜间模式和懒加载还是得用
+
 //        WebSettings settings = webView.getSettings();
 //        settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);  // 视频的js就要新的吧
 //        settings.setLoadsImagesAutomatically(false);  // 只加载页面文字，等切换到再图片

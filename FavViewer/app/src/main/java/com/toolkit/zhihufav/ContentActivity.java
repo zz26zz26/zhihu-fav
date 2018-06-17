@@ -300,8 +300,7 @@ public class ContentActivity extends AppCompatActivity {
                     webView.setBackgroundColor(color);
                     webView.setTag(R.id.web_tag_in_html, mAdapter.getPageContent(PageFragment.getPageIndex(webView)));
                     if (PageFragment.getContentMode(webView) <= PageFragment.MODE_START) {
-                        String body_color = night ? "'#aaa'" : "'#111'";  // 视频和图片没文字不用变
-                        webView.loadUrl("javascript:body_color(" + body_color + ")");  // 注意单引号
+                        webView.loadUrl("javascript:set_theme(" + night + ")");  // 图片/视频页没字不用
                     }
                 }
             }
