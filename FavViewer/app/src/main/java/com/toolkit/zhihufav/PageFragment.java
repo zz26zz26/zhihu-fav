@@ -433,6 +433,7 @@ public class PageFragment extends Fragment {
                         Log.w(TAG, "close " + url + " : max_transmission_unit = " + max_read_len +
                                 ", total_byte = " + real_len + ", " + expect_len);
                         cache.commit();
+                        mCache.flush();  // 成功要及时写入，不然强制退出时只有dirty，下次进来会删掉
                     } else {
                         Log.e(TAG, "close " + url + " : wasted_byte = " + real_len + ", expect_byte = " + expect_len);
                         cache.abort();
@@ -769,7 +770,7 @@ public class PageFragment extends Fragment {
         if (mCache != null) {
             try {
                 mCache.flush();  // 不然下载了啥都没记录
-                mCache.close();
+                mCache.close();  // 没提交的文件都会删掉
             } catch (Exception e) {
                 Log.e(TAG, "closeCache: " + e.toString());
             }
