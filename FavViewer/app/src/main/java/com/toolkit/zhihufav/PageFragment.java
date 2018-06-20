@@ -180,7 +180,8 @@ public class PageFragment extends Fragment {
                     ViewPager pager = (ViewPager) webView.getParent().getParent();  // 不判断两指闪退
                     webView.requestDisallowInterceptTouchEvent(false);  // 只有这句可能给Nested拦截
                     pager.getParent().requestDisallowInterceptTouchEvent(true);  // 这样确保给ViewPager
-                    Log.d(TAG, "ViewPager intercept");  // 其onIntercept要x>2y才拦，onTouchEvent是x>y
+                    event.setAction(MotionEvent.ACTION_CANCEL);  // 如果给不到也别上下滑动
+                    Log.d(TAG, "ViewPager intercept");  // onIntercept要x>2y才拦(onTouchEvent是x>y但难用)
                 }
             } else if (dragDirection == 2) {
                 // 在标题栏展开完时(网页必已在顶)，手指下滑留WebView(边缘滑动发光)，但上滑要给(收标题栏)
@@ -200,6 +201,8 @@ public class PageFragment extends Fragment {
                         titleState == ContentActivity.TITLE_EXPANDED && velY < 0 ||
                         titleState == ContentActivity.TITLE_COLLAPSED && webView.getScrollY() == 0 && velY > 0) {
                     if (!inNestedScroll && MotionEvent.ACTION_UP != action) {
+                        parentEvent.setAction(MotionEvent.ACTION_CANCEL);  // 复制模式后转屏不CANCEL就滑不动
+                        scroller.onTouchEvent(parentEvent);
                         parentEvent.setAction(MotionEvent.ACTION_DOWN);  // DOWN可重置积累的下滑距离
                         Log.d(TAG, "NestedScroll DOWN    @vy = " + velY);  // 但CANCEL自己后就不动了
                     }
@@ -294,7 +297,7 @@ public class PageFragment extends Fragment {
                     break;  // 复制/图片/视频页全程阻止父级拦截(防换页/出标题)
 
                 case MotionEvent.ACTION_MOVE: // 滑远又滑回来时不再白白消费thresh距离
-                    if (dragDirection == 0 && Math.abs(deltaX) > Math.max(2 * thresh, Math.abs(deltaY)))
+                    if (dragDirection == 0 && Math.abs(deltaX) > 2 * Math.max(thresh, Math.abs(deltaY)))
                         dragDirection = 1;    // 满足此条件一出去ViewPager能立刻响应
                     if (dragDirection == 0 && Math.abs(deltaY) > thresh)
                         dragDirection = 2;    // 图片模式也用此判断是否为点击(之前只看位移不看路程)
