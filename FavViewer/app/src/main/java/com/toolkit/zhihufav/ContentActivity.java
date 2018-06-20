@@ -357,8 +357,8 @@ public class ContentActivity extends AppCompatActivity {
     public void setTitleImage(Bitmap bm, ObjectAnimator anim) {
         if (mMaskAlpha == 0) {  // 没改过；xml只能设置整体透明度，正好借来解析主题属性
             mMaskAlpha = (int) (mImageView.getAlpha() * 255);
-            mImageView.setAlpha(1.0f);  // setAlpha(float)是整体透明度；setAlpha(int)是图片的
-            mImageView.setColorFilter(Color.argb(mMaskAlpha, 0, 0, 0));  // 背景透明(null)时不叠加
+            mImageView.setAlpha(0.0f);  // setAlpha(float)是整体透明度；setAlpha(int)是图片的
+            mImageView.setColorFilter(Color.argb(mMaskAlpha, 0, 0, 0));  // 对透明/null不叠加(4.4好像会叠)
             mImageView.setDrawingCacheBackgroundColor(((ColorDrawable) mAppBarLayout.getBackground()).getColor());
             anim.setDuration(450);  // 大于ViewPager.smoothScrollTo时长，不然可见卡顿
             anim.addListener(new AnimatorListenerAdapter() {
@@ -371,20 +371,14 @@ public class ContentActivity extends AppCompatActivity {
         // 直接把上一张图设为背景不行，因为背景不能进行crop_center的缩放
         // TransitionDrawable效果不好，因为ImageView会按其中一张图进行统一拉伸，也不便停止动画
         if (anim.isRunning()) anim.cancel();  // cancel保持当前状态，end改成结束状态，都触发onAnimationEnd
+        mImageView.animate().cancel();  // 这个动画停止后再cancel不会先调用onAnimationStart；但上面的会
 
-        if (bm != null) {
-            mImageView.setImageAlpha(0);
-            anim.setTarget(mImageView);
-            anim.setIntValues(0, 255);
-        } else if (mImageView.getBackground() != null) {
-            anim.setTarget(mImageView.getBackground());
-            anim.setIntValues(255, 0);
-        }
+        anim.start();  // 无图也动，为了结束后触发onAnimationEnd清背景
+        mImageView.animate().alpha(bm == null ? 0.0f : 1.0f).start();
 
-        // 不要动画时，mImageView只写这两句即可
+        // 不要动画时，只写这两句即可
         mImageView.setTag(bm);
         mImageView.setImageBitmap(bm);
-        anim.start();
 
         float shadow_radius = (bm == null) ? 0f : 20f;  // 有图时给文字加阴影；半径超过25闪退
         ((TextView) mToolbarLayout.findViewById(R.id.textView_toolbarLayout)).
@@ -394,11 +388,11 @@ public class ContentActivity extends AppCompatActivity {
 
     private void updateTitleBackground() {
         Bitmap cache = null;
-        Drawable background = mImageView.getBackground();  // 位图占内存，不用背景时不截图
-        if (mImageView.getTag() != null || (background != null && background.getAlpha() > 0)) {
-            mImageView.buildDrawingCache();  // 此前不能recycle图片和背景，有图时draw最耗时，只能在UI线程
+        Drawable background = mImageView.getBackground();  // 位图占内存，背景没东西就不截图
+        if (mImageView.getTag() != null || mImageView.getAlpha() > 0) {  // 变透明过程中算有东西
+            mImageView.buildDrawingCache();  // 此前不能recycle图片或背景，有图时draw最耗时，只能在UI线程
             cache = Bitmap.createBitmap(mImageView.getDrawingCache());  // 内存中复制一份
-            mImageView.destroyDrawingCache();  // recycle本次cache的bitmap，不然下次还是这张图
+            mImageView.destroyDrawingCache();  // recycle本次build的bitmap，不然下次还是这张图
         }
         if (background instanceof BitmapDrawable)  // null进不来；getBitmap保证非空
             ((BitmapDrawable) background).getBitmap().recycle();  // 改背景重置透明度
@@ -573,7 +567,7 @@ public class ContentActivity extends AppCompatActivity {
         mToolbarLayout.setExpandedTitleColor(0x00FFFFFF);  // 透明的白色(默认的透明是黑色的)
         mTitleImageTask = new Runnable() {
             private ObjectAnimator animator =
-                    ObjectAnimator.ofInt(mImageView, "alpha", 0, 255);  // setAlpha(int)是图片透明度
+                    ObjectAnimator.ofInt(mImageView, "imageAlpha", 0, 255);
             @Override
             public void run() {
                 int pos = mResult.getIntExtra("position", -1);  // 这个比CurrentWebView更新及时
