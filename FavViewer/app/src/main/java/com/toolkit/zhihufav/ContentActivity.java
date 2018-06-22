@@ -598,7 +598,7 @@ public class ContentActivity extends AppCompatActivity {
         mNetStateReceiver.setListener(new ConnectivityState.OnStateChangeListener() {
             @Override
             public void onChanged() {
-                PageFragment.changeCacheMode(getCurrentWebView());  // 两边的页换到时会调整下载策略
+                PageFragment.changeLoadMode(getCurrentWebView());  // 两边的页换到时会调整下载策略
                 if (PageFragment.isRichGuy() || ConnectivityState.isWifi) mImageView.post(mTitleImageTask);
                 else mImageView.removeCallbacks(mTitleImageTask);  // 飞行模式啥的；上面换模式时会下图
             }
@@ -826,7 +826,7 @@ public class ContentActivity extends AppCompatActivity {
 
             case R.id.content_rich_data:
                 PageFragment.setRichGuy(!PageFragment.isRichGuy());
-                PageFragment.changeCacheMode(getCurrentWebView());
+                PageFragment.changeLoadMode(getCurrentWebView());
                 if (PageFragment.isRichGuy()) mImageView.post(mTitleImageTask);
                 mPreferences.edit().putBoolean("RichGuy", PageFragment.isRichGuy()).apply();
                 return true;

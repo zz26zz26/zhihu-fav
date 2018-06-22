@@ -40,6 +40,9 @@ import java.lang.ref.WeakReference;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Created on 2018/5/13.
@@ -51,11 +54,6 @@ public class PageFragment extends Fragment {
 
     private static final String TAG = "PageFragment";
 
-    private static final String ARG_POS = "ARG_POS";
-    private static final String ARG_LINK = "ARG_LINK";
-    private static final String ARG_SCROLL = "ARG_SCROLL";
-    private static final String ARG_CONTENT = "ARG_CONTENT";
-
     static final int MODE_COPY = -1;
     static final int MODE_START = 0;
     static final int MODE_IMAGE = 1;
@@ -63,19 +61,26 @@ public class PageFragment extends Fragment {
     static final int MODE_BLANK = 3;
     static final int MODE_ERROR = 4;
 
+    private static final String ARG_POS = "ARG_POS";
+    private static final String ARG_LINK = "ARG_LINK";
+    private static final String ARG_SCROLL = "ARG_SCROLL";
+    private static final String ARG_CONTENT = "ARG_CONTENT";
+
     private static int sTextZoom;
     private static int sBackColor;
     private static int sEntryPage;
     private static boolean sRichGuy;
     private static boolean sNightTheme;
     private static DiskLruCache mCache;
-    // 以上static为各Fragment共用
+    private static Pattern mImagePattern = Pattern.compile("<img[^>]*\\ssrc=\"([^\"]*)\"[^>]*>");
+    // 以上static为各Fragment共用，其中pattern只匹配图片的src属性而不管data-src/original-src之类的
 
     private long mLoadStartTime;
     private boolean mOnCreate;
     private boolean mCacheOnly;
-    private boolean mChangeCacheModeOnPageFinish;
-    private Runnable mPendingModeChange;
+    private boolean mPostponeModeChange;
+    private Runnable mLoadModeChange;
+    private String[] mImageSource;
 
     private class OnTouchListener implements View.OnTouchListener {
 
@@ -523,17 +528,16 @@ public class PageFragment extends Fragment {
             super.onPageFinished(view, url);
             long load_time = System.currentTimeMillis() - mLoadStartTime;
             Log.i(TAG, "onPageFinished (" + load_time + "ms): " + url);
+            mLoadStartTime = -System.currentTimeMillis();  // 弄成负数才进得去changeLoadMode
 
-            if (getContentMode(view) == MODE_START) {
-                if (!mOnCreate || getPageIndex(view) == sEntryPage) {  // 创建预载页等切换到再下图，而创建首页/刷新/返回立刻下图
-                    mLoadStartTime = -System.currentTimeMillis();  // FIXME 到LONG_MAX/2(1亿年)之后相减可造成溢出
-                    mChangeCacheModeOnPageFinish = true;  // 这样才能去changeCacheMode
-                    changeCacheMode(view);  // Finish后调用js才有效
-                    if (sEntryPage > 0) sEntryPage = -2;  // 非创建能进来说明是换页预载，再来这一页时就不要搞特殊了
+            if (getContentMode(view) == MODE_START) {  // 预载页都等切换到再下图，不进去；创建首页除外
+                if (!mOnCreate || getPageIndex(view) == sEntryPage) {  // 创建首页/刷新/返回立刻下图
+                    if (mPostponeModeChange) changeLoadMode(view);  // Finish后调js才有效，有需要才调
+                    if (sEntryPage > 0) sEntryPage = -2;  // 这里说明是创建首页，再来此页时不再搞特殊
                 }
 
                 final WebView webView = view;  // 即使返回前缩回最小了，还是可能放大首页
-                if (load_time < 1500) {  // 若用setLoadsImagesAutomatically下完图才触发；js初始化久，也会看一半回头
+                if (load_time < 2500) {  // 若用setLoadsImagesAutomatically下完图才触发；js初始化久，也会看一半回头
                     view.postDelayed(new Runnable() {
                         @Override
                         public void run() {recallScrollPos(webView);}
@@ -541,16 +545,16 @@ public class PageFragment extends Fragment {
                     view.postDelayed(new Runnable() {
                         @Override
                         public void run() {recallScrollPos(webView);}
-                    }, 500);  // 200图多不行；最多刷新后2s跳
+                    }, 500);  // 200图多不行；最多刷新后3s跳
                 }
                 view.postDelayed(new Runnable() {
                     @Override
                     public void run() {
-                        if (getContentMode(webView) == MODE_START)  // 2s够点开图片再放大了，不能在这缩小
+                        if (getContentMode(webView) == MODE_START)  // 3s够点开图片再放大了，不能在那缩小
                             for (int i = 0; i < 7; i++)
                                 webView.zoomOut();
                     }
-                }, 2000);  // 机子慢1s不行
+                }, 3000);  // 机子慢2s不行
             }
             mOnCreate = false;  // 放在使用之后啊…
         }
@@ -894,8 +898,8 @@ public class PageFragment extends Fragment {
         PageFragment fragment = (PageFragment) webView.getTag(R.id.web_tag_fragment);
         if (fragment != null) {  // 要改浏览器所在的Fragment的参数
             fragment.mCacheOnly = true;  // 先禁止联网，没缓存的会由js替换为占位图
-            fragment.mChangeCacheModeOnPageFinish = false;  // PageFinish会设为true
-            webView.removeCallbacks(fragment.mPendingModeChange);  // 防止多次快速刷新造成流量自动下图
+            fragment.mPostponeModeChange = true;  // 反正预载的页在PageFinish里也不让改
+            webView.removeCallbacks(fragment.mLoadModeChange);  // 防止多次快速刷新造成流量自动下图
         }
 
         storeScrollPos(webView);
@@ -917,8 +921,9 @@ public class PageFragment extends Fragment {
 
         PageFragment fragment = (PageFragment) webView.getTag(R.id.web_tag_fragment);
         if (fragment != null) {  // 要改浏览器所在的Fragment的参数
-            fragment.mCacheOnly = false;  // 立即允许连网，不然不能下原图
-            webView.removeCallbacks(fragment.mPendingModeChange);
+            fragment.mCacheOnly = false;  // 允许连网不然不能下原图(载入新页面会停掉之前的图片下载)
+            fragment.mPostponeModeChange = false;
+            webView.removeCallbacks(fragment.mLoadModeChange);
         }
 
         storeScrollPos(webView);  // 里面有判断，图片刷新时不改
@@ -959,7 +964,8 @@ public class PageFragment extends Fragment {
         PageFragment fragment = (PageFragment) webView.getTag(R.id.web_tag_fragment);
         if (fragment != null) {  // 要改浏览器所在的Fragment的参数
             fragment.mCacheOnly = false;  // 立即允许连网，不然不能下封面
-            webView.removeCallbacks(fragment.mPendingModeChange);
+            fragment.mPostponeModeChange = false;
+            webView.removeCallbacks(fragment.mLoadModeChange);
         }
 
         // 要载入网页需要此后自己load(url)
@@ -982,41 +988,41 @@ public class PageFragment extends Fragment {
         new RawImageLoader(fragment).executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, url, html);
     }
 
-    public static void changeCacheMode(final WebView webView) {
+    public static void changeLoadMode(final WebView webView) {
         if (webView != null && getContentMode(webView) == MODE_START) {
-            final PageFragment fragment = (PageFragment) webView.getTag(R.id.web_tag_fragment);
+            PageFragment fragment = (PageFragment) webView.getTag(R.id.web_tag_fragment);
             if (fragment == null) return;  // 快速换页时会出现webView还在fragment已空
 
-            if (fragment.mPendingModeChange == null) {
-                fragment.mPendingModeChange = new Runnable() {
+            if (fragment.mLoadModeChange == null) {
+                fragment.mLoadModeChange = new Runnable() {
                     @Override
                     public void run() {
-                        if (getContentMode(webView) == MODE_START) {
-                            fragment.mCacheOnly = false;  // 改了这个不管流量或wifi都会下载，不改则点击图片不能下载
-                            if (sRichGuy) {
-                                Log.w(TAG, "changeCacheMode: active_load " + webView.getTag(R.id.web_tag_url));
-                                webView.loadUrl("javascript:active_load()");
-                            } else if (ConnectivityState.isWifi) {  // 不然开wifi后页面首屏内有图也不加载
-                                Log.w(TAG, "changeCacheMode: enable_load " + webView.getTag(R.id.web_tag_url));
-                                webView.loadUrl("javascript:lazy_load()");  // PageFinish后才能调js
-                                webView.loadUrl("javascript:enable_load()");
-                            } else {
-                                Log.w(TAG, "changeCacheMode: disable_load " + webView.getTag(R.id.web_tag_url));
-                                webView.loadUrl("javascript:disable_load()");
-                            }
+                        if (getContentMode(webView) != MODE_START) return;
+
+                        if (sRichGuy) {
+                            Log.w(TAG, "changeLoadMode: active_load " + webView.getTag(R.id.web_tag_url));
+                            webView.loadUrl("javascript:active_load()");
+                        } else if (ConnectivityState.isWifi) {  // 不然开wifi后页面首屏内有图也不加载
+                            Log.w(TAG, "changeLoadMode: enable_load " + webView.getTag(R.id.web_tag_url));
+                            webView.loadUrl("javascript:lazy_load()");  // PageFinish后才能调js
+                            webView.loadUrl("javascript:enable_load()");
+                        } else {
+                            Log.w(TAG, "changeLoadMode: disable_load " + webView.getTag(R.id.web_tag_url));
+                            webView.loadUrl("javascript:disable_load()");
                         }
                     }
                 };
             }
 
-            // 载入(创建/刷新/返回)完成、换页/开关Wifi都进来，但从[开始载入]到[载入结束后2s]之间不能修改
+            // 载入(创建/刷新/返回)完成、换页/开关Wifi都进来，但从[开始载入]到[载入结束]之间不能修改
+            // 恰好会等载入最后一个资源请求完毕才Finish，而js点击前可能有的图已请求并报错造成再次请求
             // ！注意频繁刷新和来回换页不要让CacheOnly正常修改后被未取消的postDelayed改回去，造成用流量下完剩余所有图！
-            if (fragment.mChangeCacheModeOnPageFinish) {
-                fragment.mChangeCacheModeOnPageFinish = false;  // js初始化完就PageFinish，但js改的图片src要等过后才加载
-                webView.postDelayed(fragment.mPendingModeChange, 2000);  // 一般1s够 TODO 2s加载不完缓存图剩余可能用流量下
-            } else if (System.currentTimeMillis() - -fragment.mLoadStartTime > 2000) {  // time是正数时(载入中)不能进来
-                webView.post(fragment.mPendingModeChange);
-            }  // else即载入期间的调用，直接忽略
+            if (fragment.mLoadStartTime > 0) {  // time是正数时(载入中)不能执行js
+                fragment.mPostponeModeChange = true;  // 要等加载完成再去跑
+            } else {
+                fragment.mCacheOnly = false;  // 改false不管流量或wifi都会下载，不改则点击图片不能下载
+                webView.post(fragment.mLoadModeChange);  // 里面的loadUrl要在UI线程调用
+            }
         }
     }
 
@@ -1026,16 +1032,31 @@ public class PageFragment extends Fragment {
             final WebView webView = (WebView) view.findViewById(R.id.webView_section);
             webView.clearMatches();  // 清空搜索结果，关闭复制控件
 
-            // 快速换页可能看一眼就destroy，也使有wifi时不立即联网
+            // 快速换页可能看一眼就destroy；等1s也使有wifi时不立即联网
             webView.postDelayed(new Runnable() {
                 @Override
-                public void run() {changeCacheMode(webView);}
+                public void run() {changeLoadMode(webView);}
             }, 1000);
 
             ContentActivity activity = ContentActivity.getReference();
             if (activity != null && webView.getScrollY() > 0)
                 activity.setTitleExpanded(false);
         }
+    }
+
+    private void parseImageSource(String html) {
+        String temp;
+        ArrayList<String> src = new ArrayList<>();
+        Matcher matcher = mImagePattern.matcher(html);
+        while (matcher.find()) {
+            if ((temp = matcher.group(1)) != null) {
+                if (temp.contains("//"))  // 公式网址可能是//开头，和其他https://之类的一起去掉
+                    temp = temp.substring(temp.indexOf("//") + 2);  // 方便与WebView解析的url匹配
+                else Log.e(TAG, "parseImageSource: unknown url type: " + temp);
+                src.add(temp);
+            }
+        }
+        mImageSource = src.toArray(new String[src.size()]);
     }
 
 
@@ -1048,7 +1069,7 @@ public class PageFragment extends Fragment {
         String content = getArguments().getString(ARG_CONTENT);
         View rootView = inflater.inflate(R.layout.fragment_content, container, false);
         WebView webView = (WebView) rootView.findViewById(R.id.webView_section);
-        setContentMode(webView, MODE_BLANK);  // 先把标签都初始化，免得之后取不到抛异常
+        webView.setTag(R.id.web_tag_mode, MODE_BLANK);  // 先把标签都初始化，免得之后取不到抛异常
         webView.setTag(R.id.web_tag_index, pos);
         webView.setTag(R.id.web_tag_scroll, scroll);  // MODE不是START，下面loadPage不改滚动位置
         webView.setTag(R.id.web_tag_in_html, content); // 一直是首页的源码
@@ -1057,7 +1078,6 @@ public class PageFragment extends Fragment {
         webView.setOnTouchListener(new OnTouchListener());
         webView.setBackgroundColor(sBackColor);  // 防夜间快速换页时闪过白色，xml里WebView的background没用
         webView.getSettings().setJavaScriptEnabled(true);  // 夜间模式和懒加载还是得用
-
 //        WebSettings settings = webView.getSettings();
 //        settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);  // 视频的js就要新的吧
 //        settings.setLoadsImagesAutomatically(false);  // 只加载页面文字，等切换到再图片
@@ -1066,9 +1086,11 @@ public class PageFragment extends Fragment {
 //        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
 //            WebView.setWebContentsDebuggingEnabled(true);  // 可在桌面Chrome调试
 //        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             webView.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         }
+        parseImageSource(content);
 
         String saved_link = null;
         if (savedInstanceState != null) {  // 转屏或清内存重入时恢复页面
@@ -1123,10 +1145,8 @@ public class PageFragment extends Fragment {
             if (webView.getParent() != null) {
                 ((ViewGroup) webView.getParent()).removeView(webView);
             }
-            setContentMode(webView, MODE_BLANK);  // 免得destroy后还去changeCacheMode
-            webView.removeCallbacks(mPendingModeChange);
+            setContentMode(webView, MODE_BLANK);  // 免得destroy后还能changeLoadMode
             webView.setTag(R.id.web_tag_fragment, null);  // 其实循环引用也能回收(没被gc_root引用就能收)
-            mPendingModeChange = null;
             webView.loadUrl("about:blank");  // 放视频时转屏还有声音(退程序没事)，当然现在转屏不重启了
             webView.destroy();
         }
