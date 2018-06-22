@@ -349,20 +349,21 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
                      "function on_init() {" +
                      "    var img = document.getElementsByTagName('img');" +
                      "    var len = img.length;" +  // for-in会把元素属性一起遍历，for-of要5.1的浏览器才支持
-                     "    for (var i = 0; i < len; i++) {" +  // 保留src属性以便有缓存时立即读取，没缓存的在此点击后正好出错换图
-                     "        img[i].setAttribute('data-src', img[i].src);" +  // 就不在html里替换了，注意在绑定事件前设置
-                     "        img[i].onclick = function () {" +
+                     "    for (var i = 0; i < len; i++) {" +  // 保留src属性以便有缓存时立即读取，没缓存的模拟点击后正好出错换图
+                     "        img[i].onclick = function () {" +  // this指调用处最后一个点.之前的对象，即img
                      "            if (this.hasAttribute('data-src')) {" +  // 这里出异常lazy_load就跑不下去
-                     "                this.src = this.getAttribute('data-src');" +  // 要防止多次点击造成出error前改src
-                     "                this.removeAttribute('data-src');" +  // this指调用处最后一个点.之前的对象，即img
-                     "                console.log('onClick: ' + this.src);" +
-                     "            }" +  // 若这里又定义个函数f并由setTimeout调用，则f里的this指向window
+                     "                var t = this.hasAttribute('eeimg') || this.className === 'thumbnail';" +  // 公式/视频
+                     "                t ? {} : this.src = 'file:///android_asset/file_loading_placeholder.svg';" +  // 就不if
+                     "                var f = function (obj, data) { obj.src = data; };" +  // 公式搞加载中会丢失src
+                     "                setTimeout(f, 50, this, this.getAttribute('data-src'));" +  // <10可能不显示加载中
+                     "                this.removeAttribute('data-src');" +  // 防止多次点击造成出error前改src
+                     "            }" +  // 这里定义的函数f由setTimeout调用，则f里的this是指向window，不是img
                      "        };" +     // 可理解为最后是由window.setTimeout调用的f（图多时定时器太多会慢）
                      "        img[i].onerror = function () {" +  // 不能改成大写；若无src载入时也触发此
                      "            if (!this.hasAttribute('data-src')) {" +  // has('src')不行否则第二次data-src变空或file://
-                     "                var f = this.hasAttribute('eeimg') || this.className === 'thumbnail';" +  // 公式/视频
+                     "                var t = this.hasAttribute('eeimg') || this.className === 'thumbnail';" +  // 公式/视频
                      "                this.setAttribute('data-src', this.src);" +
-                     "                this.src = f ? '' : 'file:///android_asset/file_download_placeholder.svg';" +
+                     "                this.src = t ? '' : 'file:///android_asset/file_download_placeholder.svg';" +
                      "                console.log('onError: ' + this.getAttribute('data-src'));" +
                      "            }" +  // src=''不显示裂开图标，且保留img::before背景(但视频框里的图没有)；本地文件不存在都有图裂
                      "        };" +     // 与https共用时要开启混合模式才能访问file:// (当然每次都有警告)
@@ -379,7 +380,7 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
 //                     "                xhr.send(null);" +  // HEAD的Request照样会被Intercept，要标记一下
 //                     "            }" +  // TODO 超过一帧才标注/用webp原图更小但保存看不了/主要是现在刷新一次又从头来！！！搞得初始化很久(有缓存即触发此)
 //                     "        };" +     // TODO 回答/文章页面里，动图的data-actualsrc直接是gif结尾；只有收藏里仍是jpg（但收藏里帮弄好专栏头图，html也简洁）
-                     "        img[i].onclick();" +  // 有的图加载完才绑定事件，只好强行再加载一轮(反正是缓存)，使状态正确
+                     "        img[i].src = img[i].src;" +  // 有的图已加载失败才绑定事件，要模拟onclick换出错图(不模拟加载延迟)
                      "    }" +
                      "    ImageArray = img;" +  // 前面不带var的是window全局变量
                      "    ImageLoader = throttle(lazy_load(1), 250);" +  // onclick已经remove了data-src，这里再跑就出错
