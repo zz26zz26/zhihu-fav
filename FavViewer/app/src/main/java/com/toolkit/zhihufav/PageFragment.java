@@ -65,6 +65,7 @@ public class PageFragment extends Fragment {
     private static final String ARG_LINK = "ARG_LINK";
     private static final String ARG_SCROLL = "ARG_SCROLL";
     private static final String ARG_CONTENT = "ARG_CONTENT";
+    private static final String PRE_EQUATION = "equation?tex=";
 
     private static int sTextZoom;
     private static int sBackColor;
@@ -323,16 +324,19 @@ public class PageFragment extends Fragment {
 
                 case MotionEvent.ACTION_UP:
                     if (dragDirection == 0) {  // 没滑动+没多点触控才是点击
-                        WebView.HitTestResult result = webView.getHitTestResult();
                         switch (getContentMode(webView)) {
-                            case MODE_START:  // 视频封面SRC_IMAGE_ANCHOR_TYPE；播放页图IMAGE_TYPE
-                                if (result.getType() == WebView.HitTestResult.IMAGE_TYPE) {
-                                    if (result.getExtra().startsWith("http") &&   // 文件不行(空src在loadImage里也是直接返回)
+                            case MODE_START:
+                                WebView.HitTestResult result = webView.getHitTestResult();
+                                if (result.getType() == WebView.HitTestResult.IMAGE_TYPE) {  // 图裂在4.4是IMAGE；5.0是UNKNOWN
+                                    String extra_url = result.getExtra();  // 视频封面SRC_IMAGE_ANCHOR；播放页图IMAGE
+                                    if (extra_url.startsWith("http") &&           // 文件不行(图片加载失败会换图)
                                             currentTime - touchDownTime < 500 &&  // 长按不行(ViewConfiguration.getLongPressTimeout()
                                             currentTime - touchDownTime > 10 &&   // 机按不行(人超轻触可4ms但不自然)
                                             currentTime - touchUpTime > 600) {    // 连击不行(免得生成太多异步)
-                                        performClickImage(webView, result.getExtra());
-                                        currentTime -= 300;  // 防止点开图片后马上再点一次就放大
+                                        if (!extra_url.equals(webView.getTag(R.id.web_tag_url))) {
+                                            performClickImage(webView, extra_url);  // 公式失败不行(空src被解析为本页url)
+                                            currentTime -= 300;  // 防止点开图片后马上再点一次就放大
+                                        }
                                     }
                                 }
                                 break;
@@ -410,7 +414,7 @@ public class PageFragment extends Fragment {
                         conn.setReadTimeout(10000);  // get自动调connect，如没网就抛异常
                         if (conn.getResponseCode() == HttpURLConnection.HTTP_OK) {  // 不然0kb文件也成缓存了
                             super.in = conn.getInputStream();
-                            this.expect_len = conn.getContentLength();
+                            expect_len = conn.getContentLength();
                         } else {
                             max_read_len = -1;
                             conn.disconnect();
@@ -428,7 +432,7 @@ public class PageFragment extends Fragment {
                 } catch (Exception e) {
                     Log.e(TAG, "read " + url + " : " + e.toString());
                     max_read_len = -1;
-                    throw e;
+                    return -1;  // 4.4没弄异常处理
                 }
             }
 
@@ -477,9 +481,9 @@ public class PageFragment extends Fragment {
             // 图片都自己存一份，方便长按保存图片，没网也能知道是动图了；公式图也得存不然不能导出
             Log.i(TAG, "shouldInterceptRequest: " + url);
             if (url.endsWith(".jpg") || url.endsWith(".png") || url.endsWith(".gif") ||
-                    url.endsWith(".webp") || url.contains("equation?tex=")) {  // 出现频率高者在前
+                    url.endsWith(".webp") || url.contains(PRE_EQUATION)) {  // 出现频率高者在前
                 String name = getUrlHash(url);  // 公式图根据tex代码命名，出错这次就不存了(edit抛异常)
-                String type = url.contains("equation?tex=") ? "svg+xml" : url.substring(url.lastIndexOf('.') + 1);
+                String type = url.contains(PRE_EQUATION) ? "svg+xml" : url.substring(url.lastIndexOf('.') + 1);
                 try {
                     InputStream inStream = null;
                     DiskLruCache.Snapshot snapshot = mCache.get(name);
@@ -587,9 +591,9 @@ public class PageFragment extends Fragment {
             String url = params[0];
             String html = params[1];
 
-            if (url.contains("?") || url.contains("_r") || !url.contains("_")) {
-                publishProgress(url);  // 公式(含?)是服务器生成的矢量图，不能乱加后缀
-                return null;           // 不含_或含_r说明已是原图，直接载入，不用再管
+            if (!url.contains(PRE_EQUATION) && (url.contains("_r") || !url.contains("_"))) {
+                publishProgress(url);  // 不含_或含_r说明已是原图，直接载入，不用再管
+                return null;           // 公式可能不含_，但要到下面看有缓存才能载入
             }
 
             // url_后缀(边长)：均为等比例缩小，缩不了给原图，打死不会放大
@@ -606,7 +610,8 @@ public class PageFragment extends Fragment {
                 try {
                     if ((snapshot = mCache.get(getUrlHash(url))) != null) {  // 下载中也是null
                         publishProgress(url);
-                    } else {
+                    }
+                    if (snapshot == null || url.contains(PRE_EQUATION)) {  // 公式没大图，别乱加后缀
                         return null;
                     }
 
@@ -710,17 +715,15 @@ public class PageFragment extends Fragment {
     }
 
     public static String getUrlHash(String url) {
-        if (url.contains("equation?tex=")) {
-            try {
-                if (url.contains("equation?tex=")) {  // 公式图根据tex代码命名，出错这次就不存了
-                    MessageDigest md = MessageDigest.getInstance("MD5");  // MD5(32位16进制)/SHA-1(40位)
-                    md.update(url.substring(url.lastIndexOf('=') + 1).getBytes());  // 安卓默认UTF-8
-                    StringBuilder sb = new StringBuilder(39);  // url里的tex中/=已转义，.没转
-                    for (byte b : md.digest()) {  // %02x；& 0xff使负数byte转int时前面是0，而非符号位
-                        sb.append((b & 0xff) < 16 ? "0" : "").append(Integer.toHexString(b & 0xff));
-                    }
-                    return sb.insert(0, "eq-").append(".svg").toString();
+        if (url.contains(PRE_EQUATION)) {
+            try {  // 公式图根据tex代码命名，出错这次就不存了
+                MessageDigest md = MessageDigest.getInstance("MD5");  // MD5(32位16进制)/SHA-1(40位)
+                md.update(url.substring(url.lastIndexOf('=') + 1).getBytes());  // 安卓默认UTF-8
+                StringBuilder sb = new StringBuilder(39);  // url里的tex中/=已转义，.没转
+                for (byte b : md.digest()) {  // %02x；& 0xff使负数byte转int时前面是0，而非符号位
+                    sb.append((b & 0xff) < 16 ? "0" : "").append(Integer.toHexString(b & 0xff));
                 }
+                return sb.insert(0, "eq-").append(".svg").toString();
             } catch (Exception e) {
                 Log.e(TAG, "getUrlHash: " + e.toString());
                 return null;
@@ -929,7 +932,7 @@ public class PageFragment extends Fragment {
         storeScrollPos(webView);  // 里面有判断，图片刷新时不改
         setContentMode(webView, MODE_IMAGE);
         String color = "rgba(128,128,128, .1)";  // 同<pre>标签背景，注意不要"background:"和";"
-        if (url.contains("equation?tex=")) color = "rgba(255,255,255, .2)";  // svg作背景改不了颜色
+        if (url.contains(PRE_EQUATION)) color = "rgba(255,255,255, .2)";  // svg作背景改不了颜色
         String html = "<html><body style=\"margin:0\">" +
 //                          "<img src=\"" + url + "\" width=\"100%\" " +
 //                          "style=\"position:absolute; display:block; " +

@@ -355,7 +355,7 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
                      "                var t = this.hasAttribute('eeimg') || this.className === 'thumbnail';" +  // 公式/视频
                      "                t ? {} : this.src = 'file:///android_asset/file_loading_placeholder.svg';" +  // 就不if
                      "                var f = function (obj, data) { obj.src = data; };" +  // 公式搞加载中会丢失src
-                     "                setTimeout(f, 50, this, this.getAttribute('data-src'));" +  // <10可能不显示加载中
+                     "                setTimeout(f, t ? 0:50, this, this.getAttribute('data-src'));" +  // <10不显示加载中
                      "                this.removeAttribute('data-src');" +  // 防止多次点击造成出error前改src
                      "            }" +  // 这里定义的函数f由setTimeout调用，则f里的this是指向window，不是img
                      "        };" +     // 可理解为最后是由window.setTimeout调用的f（图多时定时器太多会慢）
