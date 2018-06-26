@@ -15,6 +15,7 @@
         <item name="toolbar_mask_alpha">@dimen/toolbar_mask_alpha</item>
 
         <!--允许ActionMode覆盖在Toolbar上，防止Activity顶部出现两个上下文操作栏-->
+        <!--当然如果Toolbar比默认标题栏高，启动ActionMode之后标题栏还是会露出马脚-->
         <item name="windowActionModeOverlay">true</item>
 
         <!--布局根元素要设置android:fitsSystemWindows="true"才能不让内容顶到状态栏上-->

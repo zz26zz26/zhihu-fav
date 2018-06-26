@@ -156,7 +156,7 @@ public class ContentActivity extends AppCompatActivity {
     }
 
     private void hideInputMethod() {
-        // android.R.id.content gives the root view of current activity
+        // android.R.id.content gives the root view (ContentFrameLayout) of current activity
         InputMethodManager manager = (InputMethodManager) this.getSystemService(Context.INPUT_METHOD_SERVICE);
         manager.hideSoftInputFromWindow(findViewById(android.R.id.content).getWindowToken(), 0);
     }
@@ -665,14 +665,14 @@ public class ContentActivity extends AppCompatActivity {
         // 重新layout一个ContentView然后把布局参数复制过来
         // Activity的setContentView()方法的实现在PhoneWindow里
         View newContentView = getLayoutInflater().inflate(R.layout.activity_content,
-                (ViewGroup) getWindow().getDecorView(), false);
+                (ViewGroup) findViewById(android.R.id.content), false);
         Toolbar newToolBar = (Toolbar) newContentView.findViewById(R.id.toolbar_content);
         AppBarLayout newAppBarLayout = (AppBarLayout) newContentView.findViewById(R.id.app_bar);
         CollapsingToolbarLayout newToolbarLayout = (CollapsingToolbarLayout) newContentView.findViewById(R.id.toolbar_layout);
         TextView oldTitle = (TextView) mToolbarLayout.findViewById(R.id.textView_toolbarLayout);
         TextView newTitle = (TextView) newToolbarLayout.findViewById(R.id.textView_toolbarLayout);
 
-        // 先把状态栏高度加上去
+        // 先把状态栏高度弄上去留空
         ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) newToolBar.getLayoutParams();
         params.topMargin = getStatusBarHeight();
         newToolBar.setLayoutParams(params);
