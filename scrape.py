@@ -130,10 +130,9 @@ def update_database(fav):
     ''' 更新收藏夹数据库, fav的内容应属于同一个收藏夹 '''
     conn = sqlite3.connect('fav.db')
     columns = conn.execute('PRAGMA table_info(fav);').fetchall()  # 表中每列属性，无此表返回空
-    if len(columns) != 0:
+    if len(columns) != 7:
         conn.execute('''DROP TABLE IF EXISTS `fav_old`;''')  # 表/列名有.空格/关键字放在反引号``里
         conn.execute('''ALTER TABLE `fav` RENAME TO `fav_old`;''')
-    if len(columns) != 7:
         conn.execute('''CREATE TABLE fav (folder   TEXT,
                                           title    TEXT,
                                           author   TEXT,
@@ -155,7 +154,7 @@ def update_database(fav):
     old_lnk = [r[3] for r in old_rows]
     new_lnk = [r[3] for r in fav_rows]
     insert = [r for r in fav_rows if r[3] not in old_lnk]  # 递推式/推导式 [3:5]的区间是[3,5)
-    update = [r for r in fav_rows if r[3] in old_lnk and r[4] not in old_dat]  # (edited)内容没变的去掉
+    update = [r for r in fav_rows if r[3] in old_lnk and r[4] not in old_dat]  # (即edited)内容没变的不显示
     delete = [r for r in old_rows if r[3] not in new_lnk]  # 也可能是要求修改
 
     if fav.next_link != '':  # 下一页链接非空说明提前退出 收藏夹没遍历完 没遍历到的都认为删除了
