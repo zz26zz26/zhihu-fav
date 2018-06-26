@@ -131,8 +131,9 @@ def update_database(fav):
     conn = sqlite3.connect('fav.db')
     columns = conn.execute('PRAGMA table_info(fav);').fetchall()  # 表中每列属性，无此表返回空
     if len(columns) != 7:
-        conn.execute('''DROP TABLE IF EXISTS `fav_old`;''')  # 表/列名有.空格/关键字放在反引号``里
-        conn.execute('''ALTER TABLE `fav` RENAME TO `fav_old`;''')
+        if len(columns) != 0:
+            conn.execute('''DROP TABLE IF EXISTS `fav_old`;''')  # 表/列名有.空格/关键字放在反引号``里
+            conn.execute('''ALTER TABLE `fav` RENAME TO `fav_old`;''')
         conn.execute('''CREATE TABLE fav (folder   TEXT,
                                           title    TEXT,
                                           author   TEXT,
