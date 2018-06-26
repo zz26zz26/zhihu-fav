@@ -452,11 +452,12 @@ public class ContentActivity extends AppCompatActivity {
                         setTitleExpanded(true);  // 网页已到顶不用上滚动画
                     } else {
                         String link = mAdapter.getPageTitleImageLink(PageFragment.getPageIndex(webView));
-                        if (link != null && webView != null) {  // 有专栏头图才去下
-                            webView.loadUrl("javascript:load_first()");
-                            PageFragment.performClickImage(webView, link);
-                            mImageView.removeCallbacks(mTitleImageTask);  // 有delayed就要防止按太快
-                            mImageView.postDelayed(mTitleImageTask, 1000);  // 下载要时间
+                        if (link != null && webView != null) {  // 有专栏头图才去下或开大图
+                            if (mImageView.getTag() == null) {  // 头图显示了再开大图页比较符合预期
+                                webView.loadUrl("javascript:load_first()");
+                                mImageView.removeCallbacks(mTitleImageTask);
+                                mImageView.post(mTitleImageTask);  // 可能上次下好了没载入
+                            } else PageFragment.performClickImage(webView, link);
                         }
                     }
                 }
@@ -566,19 +567,24 @@ public class ContentActivity extends AppCompatActivity {
         mToolbarLayout = (CollapsingToolbarLayout) findViewById(R.id.toolbar_layout);
         mToolbarLayout.setExpandedTitleColor(0x00FFFFFF);  // 透明的白色(默认的透明是黑色的)
         mTitleImageTask = new Runnable() {
+            private int last_pos, times;
             private ObjectAnimator animator =
                     ObjectAnimator.ofInt(mImageView, "imageAlpha", 0, 255);
             @Override
             public void run() {
                 int pos = mResult.getIntExtra("position", -1);  // 这个比CurrentWebView更新及时
+                Log.w(TAG, "mTitleImageTask: checking available title image...");
                 Bitmap bitmap = mAdapter.getPageTitleImage(pos);
                 if (bitmap != mImageView.getTag()) setTitleImage(bitmap, animator);  // 都是null不必进去
-                if (bitmap == null && mAdapter.getPageTitleImageLink(pos) != null) {
-                    if (ConnectivityState.network == 0) return;  // 流量还能手动下，没网就真的算了
-                    mAdapter.updateTitleImageAsync(pos);
-                    mImageView.removeCallbacks(this);  // 防止按太快出历史遗留问题
-                    mImageView.postDelayed(this, 1500);  // 没拿到图+有需要才再试；退出时会取消
-                    Log.w(TAG, "mTitleImageTask: I will be back in 1.5 seconds!");
+                if (bitmap == null && ConnectivityState.network > 0 &&  // 流量还能手动下，没网直接算了
+                        times < 8 && mAdapter.getPageTitleImageLink(pos) != null) {  // 没拿到图+确实有图才再试
+                    mAdapter.updateTitleImageAsync(pos);  // 重试期间点标题栏次数不会清零，重试太多也不爽
+                    mImageView.removeCallbacks(this);     // 防止按太快出历史遗留问题
+                    mImageView.postDelayed(this, 1500);   // 退出Activity时会取消
+                    times += (last_pos == (last_pos = pos)) ? 1 : -times;  // pos一变就把次数清零
+                } else {
+                    last_pos = -1;
+                    times = 0;  // 不post就断后了，清零等下一轮
                 }
             }
         };
@@ -599,8 +605,9 @@ public class ContentActivity extends AppCompatActivity {
             @Override
             public void onChanged() {
                 PageFragment.changeLoadMode(getCurrentWebView());  // 两边的页换到时会调整下载策略
-                if (PageFragment.isRichGuy() || ConnectivityState.isWifi) mImageView.post(mTitleImageTask);
-                else mImageView.removeCallbacks(mTitleImageTask);  // 飞行模式啥的；上面换模式时会下图
+                mImageView.removeCallbacks(mTitleImageTask);  // 取消之前延时任务；下面换模式后会下图
+                if (ConnectivityState.isWifi || (ConnectivityState.network > 0 && PageFragment.isRichGuy()))
+                    mImageView.post(mTitleImageTask);
             }
         });
         registerReceiver(mNetStateReceiver, new IntentFilter("android.net.conn.CONNECTIVITY_CHANGE"));
@@ -651,9 +658,9 @@ public class ContentActivity extends AppCompatActivity {
                 }
             });
         } else {
-            mViewPager.setCurrentItem(position);  // 非0时顺便触发换页监听
-            setTitle(mAdapter.getPageTitle(position));  // 0页则不触发换页监听，要手动来
-            if (position == 0) mImageView.post(mTitleImageTask);  // 较耗时不重复；onCreate里没layout会闪退
+            mViewPager.setCurrentItem(position);  // 非0时立即触发换页监听
+            setTitle(mAdapter.getPageTitle(position));  // 0页不会触发换页监听，要手动来
+            if (position == 0) mImageView.post(mTitleImageTask);  // 不与换页监听重复；onCreate未layout调run会闪退
         }
     }
 
@@ -827,8 +834,11 @@ public class ContentActivity extends AppCompatActivity {
             case R.id.content_rich_data:
                 PageFragment.setRichGuy(!PageFragment.isRichGuy());
                 PageFragment.changeLoadMode(getCurrentWebView());
-                if (PageFragment.isRichGuy()) mImageView.post(mTitleImageTask);
                 mPreferences.edit().putBoolean("RichGuy", PageFragment.isRichGuy()).apply();
+                if (PageFragment.isRichGuy() && ConnectivityState.network > 0) {
+                    mImageView.removeCallbacks(mTitleImageTask);
+                    mImageView.post(mTitleImageTask);
+                }
                 return true;
 
             case R.id.content_save:

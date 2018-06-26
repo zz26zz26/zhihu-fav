@@ -191,6 +191,10 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
     }
 
     void updateTitleImageAsync(int position) {
+        // 调用处要保证已有同位置查询的不要再开，不然同时进来的查完后面就把前面的recycle了
+        if (position < mTitleImages.size() && mTitleImages.get(position) != null) return;
+
+        // 一般没图1ms，有图100ms，新窗口300+ms
         new AsyncTask<Integer, Void, Bitmap>() {
             int position;
 
