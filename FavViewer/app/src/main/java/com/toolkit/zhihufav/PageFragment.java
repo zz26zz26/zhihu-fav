@@ -73,7 +73,7 @@ public class PageFragment extends Fragment {
     private static boolean sRichGuy;
     private static boolean sNightTheme;
     private static DiskLruCache mCache;
-    private static Pattern mImagePattern = Pattern.compile("<img[^>]*\\ssrc=\"([^\"]*)\"[^>]*>");
+    private static Pattern mImgSrcPattern = Pattern.compile("<img[^>]*\\ssrc=\"([^\"]*)\"[^>]*>");
     // 以上static为各Fragment共用，其中pattern只匹配图片的src属性而不管data-src/original-src之类的
 
     private long mLoadStartTime;
@@ -249,6 +249,8 @@ public class PageFragment extends Fragment {
         @Override
         public boolean onTouch(View v, MotionEvent event) {
             WebView webView = (WebView) v;
+            int mode = getContentMode(webView);
+
             boolean consumed = false;
             long currentTime = SystemClock.uptimeMillis();  // 与event.getDownTime时间格式一致
             int id = event.getPointerId(event.getActionIndex());  // id每根手指唯一；index总是从0开始
@@ -324,39 +326,48 @@ public class PageFragment extends Fragment {
 
                 case MotionEvent.ACTION_UP:
                     if (dragDirection == 0) {  // 没滑动+没多点触控才是点击
-                        switch (getContentMode(webView)) {
-                            case MODE_START:
-                                WebView.HitTestResult result = webView.getHitTestResult();
-                                if (result.getType() == WebView.HitTestResult.IMAGE_TYPE) {  // 图裂在4.4是IMAGE；5.0是UNKNOWN
-                                    String extra_url = result.getExtra();  // 视频封面SRC_IMAGE_ANCHOR；播放页图IMAGE
-                                    if (extra_url.startsWith("http") &&           // 文件不行(图片加载失败会换图)
-                                            currentTime - touchDownTime < 500 &&  // 长按不行(ViewConfiguration.getLongPressTimeout()
-                                            currentTime - touchDownTime > 10 &&   // 机按不行(人超轻触可4ms但不自然)
-                                            currentTime - touchUpTime > 600) {    // 连击不行(免得生成太多异步)
-                                        if (!extra_url.equals(webView.getTag(R.id.web_tag_url))) {
-                                            performClickImage(webView, extra_url);  // 公式失败不行(空src被解析为本页url)
-                                            currentTime -= 300;  // 防止点开图片后马上再点一次就放大
-                                        }
+                        if (MODE_START == mode) {
+                            WebView.HitTestResult result = webView.getHitTestResult();
+                            if (result.getType() == WebView.HitTestResult.IMAGE_TYPE) {  // 图裂在4.4是IMAGE；5.0是UNKNOWN
+                                String extra_url = result.getExtra();  // 视频封面SRC_IMAGE_ANCHOR；播放页图IMAGE
+                                if (extra_url.startsWith("http") &&           // 文件不行(图片加载失败会换图)
+                                        currentTime - touchDownTime < 500 &&  // 长按不行(ViewConfiguration.getLongPressTimeout()
+                                        currentTime - touchDownTime > 10 &&   // 机按不行(人超轻触可4ms但不自然)
+                                        currentTime - touchUpTime > 600) {    // 连击不行(免得生成太多异步)
+                                    if (!extra_url.equals(webView.getTag(R.id.web_tag_url))) {
+                                        performClickImage(webView, extra_url);  // 公式失败不行(空src被解析为本页url)
+                                        currentTime -= 300;  // 防止点开图片后马上再点一次就放大
                                     }
                                 }
-                                break;
-                            case MODE_IMAGE:  // 视频模式进来也放不大
-                                if (currentTime - touchUpTime < 300) {  // ViewConfiguration.getDoubleTapTimeout()
-                                    if (webView.zoomOut())              // 能缩小(out)就缩到最小
-                                        for (int i = 0; i < 7; i++)     // 放最大也就能缩小7次
-                                            webView.zoomOut();
-                                    else
-                                        for (int i = 0; i < 5; i++)
-                                            webView.zoomIn();
-                                }
-                                break;
+                            }
+                        } else if (MODE_IMAGE == mode) {  // 视频模式进来也放不大
+                            if (currentTime - touchUpTime < 300) {  // ViewConfiguration.getDoubleTapTimeout()
+                                if (webView.zoomOut())              // 能缩小(out)就缩到最小
+                                    for (int i = 0; i < 7; i++)     // 放最大也就能缩小7次
+                                        webView.zoomOut();
+                                else
+                                    for (int i = 0; i < 5; i++)
+                                        webView.zoomIn();
+                            }
                         }
                         touchUpTime = currentTime;
+                    } else if (dragDirection == 1 && MODE_IMAGE == mode && !webView.canZoomOut()) {
+                        tracker.computeCurrentVelocity(1000);  // 图片页未放大时横滑可切换图
+                        if (Math.abs(tracker.getXVelocity()) > config.getScaledMinimumFlingVelocity()) {
+                            int next = findInImageSource(mImageSource, (String) webView.getTag(R.id.web_tag_url));
+                            if (next != -1)
+                                next -= (int) Math.signum(tracker.getXVelocity());  // 向右滑是正，但要拿上一张
+                            if (next >= 0 && next < mImageSource.length) {
+                                String temp_url = mImageSource[next];
+                                loadImagePage(webView, temp_url);  // 没缩略图时下面无效(没网会空着)
+                                performClickImage(webView, temp_url);  // 已有缩略图就去开大图
+                            }
+                        }
                     }
                     break;
             }
 
-            if (getContentMode(webView) == MODE_START && dragDirection > 0) {  // UP等事件也要传
+            if (mode == MODE_START && dragDirection > 0) {  // UP等事件也要传
                 consumed = dispatchNestedScroll(webView, event);  // 放tracker.recycle之前
             }  // 里面修改event的action没事，因为下面用的action是最开始的缓存
 
@@ -530,7 +541,7 @@ public class PageFragment extends Fragment {
         @Override
         public void onPageFinished(WebView view, String url) {  // 创建(预载)/刷新/返回都触发，js下图不触发
             super.onPageFinished(view, url);
-            long load_time = System.currentTimeMillis() - mLoadStartTime;
+            long load_time = System.currentTimeMillis() - Math.abs(mLoadStartTime);
             Log.i(TAG, "onPageFinished (" + load_time + "ms): " + url);
             mLoadStartTime = -System.currentTimeMillis();  // 弄成负数才进得去changeLoadMode
 
@@ -568,6 +579,7 @@ public class PageFragment extends Fragment {
     private static class RawImageLoader extends AsyncTask<String, String, String> {
 
         private int contentLength;
+        private String originUrl;
         private WeakReference<PageFragment> fragmentRef;
 
         private RawImageLoader(PageFragment fragment) {
@@ -579,7 +591,7 @@ public class PageFragment extends Fragment {
             PageFragment fragment = fragmentRef.get();
             if (fragment == null) return null;
 
-            View view = fragment.getView();  // 本Fragment可见且网页在看图模式才载入新网址
+            View view = fragment.getView();  // 本Fragment可见才可能允许载入新网址
             if (view == null || !fragment.getUserVisibleHint()) return null;
 
             return (WebView) view.findViewById(R.id.webView_section);
@@ -590,6 +602,7 @@ public class PageFragment extends Fragment {
             HttpURLConnection conn = null;
             String url = params[0];
             String html = params[1];
+            originUrl = url;
 
             if (!url.contains(PRE_EQUATION) && (url.contains("_r") || !url.contains("_"))) {
                 publishProgress(url);  // 不含_或含_r说明已是原图，直接载入，不用再管
@@ -601,7 +614,8 @@ public class PageFragment extends Fragment {
             // s(25) is(34) xs(50) im(68) l(100) xl(200) xll(400)，按短边算比例，能缩时居中裁成正方形
             // 180x120 200x112 400x224 1200x500(专栏头图)，长边超限会裁剪(上面在不能缩时即使长边超限也不裁)
             // 60w(60) 250x0(250) qhd(480) b(600) hd(720) fhd(1080) r(原图)=无后缀，按宽度缩
-            String raw_img_url = url.replaceFirst("(?:_[^_/]+)?\\.\\w+$", "");  // 弄成无后缀
+            String raw_img_url = url.replaceFirst("(?:_[^_/]+)?\\.\\w{3,4}$", "");  // 弄成无后缀
+            String raw_img_ext = "_r" + url.replaceFirst(".*(\\.\\w{3,4})$", "$1");  // 用原扩展名
 
             {   // 首先确认缓存有url指定的图，说明至少小图已下载完成，有得显示，才能开始
                 // 然后看看缓存里有没有对应的gif/jpg大图，没有再去尝试联网
@@ -611,15 +625,15 @@ public class PageFragment extends Fragment {
                     if ((snapshot = mCache.get(getUrlHash(url))) != null) {  // 下载中也是null
                         publishProgress(url);
                     }
-                    if (snapshot == null || url.contains(PRE_EQUATION)) {  // 公式没大图，别乱加后缀
+                    if (snapshot == null || url.contains(PRE_EQUATION)) {  // 公式没大图，也没扩展名
                         return null;
                     }
 
                     if ((snapshot = mCache.get(raw_name + "_r.gif")) != null) {
                         return raw_img_url + "_r.gif";
                     }
-                    if ((snapshot = mCache.get(raw_name + "_r.jpg")) != null) {
-                        return raw_img_url + "_r.jpg";
+                    if ((snapshot = mCache.get(raw_name + raw_img_ext)) != null) {
+                        return raw_img_url + raw_img_ext;
                     }
                 } catch (IOException e) {
                     Log.w(TAG, "GetGif: doInBackground: " + e.toString());
@@ -641,7 +655,7 @@ public class PageFragment extends Fragment {
                 if (conn.getResponseCode() == HttpURLConnection.HTTP_OK) {
                     contentLength = conn.getContentLength();  // 近似大小，最后输出别太精确
                     if (conn.getContentType().equals("image/gif"))  // 非动图时是jpeg/png/webp
-                        return raw_img_url + "_r.gif";
+                        return raw_img_url + "_r.gif";  // 网址以gif结尾也可能返回png
                 }
             } catch (Exception e) {
                 Log.e(TAG, "GetGif: doInBackground: " + e.toString());
@@ -668,7 +682,7 @@ public class PageFragment extends Fragment {
                 int width = sub_start < 1 ? 0 : Integer.parseInt(img.substring(sub_start, sub_end));
                 Log.w(TAG, "image raw width = " + width);
                 if (width >= 800)  // 只比600宽一点的原图就不用下了；压缩不看高度
-                    return raw_img_url + "_r.jpg";
+                    return raw_img_url + raw_img_ext;
             }
 
             return null;  // 前面没return就来到这，如小图就不必重定向
@@ -677,6 +691,9 @@ public class PageFragment extends Fragment {
         @Override
         protected void onProgressUpdate(String... values) {
             super.onProgressUpdate(values);
+            // TODO 若异步的4个线程都在background里等待网络响应，则别的任务都会等他们超时才会开始，因此此处也要考虑期间乱点和滑动
+            // TODO 不然只能等数据库html里的gif不必联网验证时才能消除此问题
+            // TODO gif不联网还解决了没有大图的图片总会联网验证有无gif的问题
             if (values == null || values.length == 0) return;
             loadImagePage(getVisibleWebView(), values[0]);
         }
@@ -688,6 +705,7 @@ public class PageFragment extends Fragment {
 
             WebView webView = getVisibleWebView();  // 网速慢时可能从图片页返回后才来到这
             if (webView == null || getContentMode(webView) != MODE_IMAGE) return;
+            if (!originUrl.equals(webView.getTag(R.id.web_tag_url))) return;  // 缩略图要对应
 
             loadImagePage(webView, s);
             ContentActivity activity = ContentActivity.getReference();
@@ -933,6 +951,11 @@ public class PageFragment extends Fragment {
         setContentMode(webView, MODE_IMAGE);
         String color = "rgba(128,128,128, .1)";  // 同<pre>标签背景，注意不要"background:"和";"
         if (url.contains(PRE_EQUATION)) color = "rgba(255,255,255, .2)";  // svg作背景改不了颜色
+        String pager = "";
+        if (fragment != null)
+            pager = "<div style=\"position:fixed; right:5px; bottom:5px; padding:5px; color:#111; background:rgba(192,192,192,.3);\">" +
+                    (findInImageSource(fragment.mImageSource, url) + 1) + " / " + fragment.mImageSource.length + "</div>";
+
         String html = "<html><body style=\"margin:0\">" +
 //                          "<img src=\"" + url + "\" width=\"100%\" " +
 //                          "style=\"position:absolute; display:block; " +
@@ -943,7 +966,7 @@ public class PageFragment extends Fragment {
 //                          "top:0; left:0; right:0; bottom:0; margin:auto;\">" +
                       "<div style=\"background:" + color + " url(" + url + ") no-repeat center center;" +
                       "background-size:contain; width:100%; height:100%\" />" +
-                      "</body></html>";
+                      pager + "</body></html>";
 
         WebSettings settings = webView.getSettings();
         settings.setSupportZoom(true);          // 默认开
@@ -1029,6 +1052,24 @@ public class PageFragment extends Fragment {
         }
     }
 
+    private static int findInImageSource(String[] imageSource, String src) {
+        int next = 0, len = imageSource.length;
+        src = src.substring(src.indexOf("//") + 2);
+        if (!src.contains(PRE_EQUATION) && src.lastIndexOf('_') > src.lastIndexOf('/'))
+            src = src.substring(0, src.lastIndexOf('_'));
+        // 找出当前是页面内的第几张图，注意RawImageLoader换大图后网址会变
+        while (next < len) {
+            String tmp = imageSource[next];  // 无论缩略图或原图，名称一致就行
+            tmp = tmp.substring(tmp.indexOf("//") + 2);
+            if (!tmp.contains(PRE_EQUATION) && tmp.lastIndexOf('_') > tmp.lastIndexOf('/'))
+                tmp = tmp.substring(0, tmp.lastIndexOf('_'));
+            if (!tmp.equals(src))
+                next = next + 1;
+            else break;
+        }
+        return next < len ? next : -1;
+    }
+
     private void resumePageLoad() {  // 换页时的目标页调用；换页时隐藏的页和点刷新/返回时不会
         View view = getView();       // 得到onCreateView创建的rootView
         if (view != null) {          // Activity刚启动时就是null
@@ -1050,13 +1091,16 @@ public class PageFragment extends Fragment {
     private void parseImageSource(String html) {
         String temp;
         ArrayList<String> src = new ArrayList<>();
-        Matcher matcher = mImagePattern.matcher(html);
-        while (matcher.find()) {
-            if ((temp = matcher.group(1)) != null) {
-                if (temp.contains("//"))  // 公式网址可能是//开头，和其他https://之类的一起去掉
-                    temp = temp.substring(temp.indexOf("//") + 2);  // 方便与WebView解析的url匹配
-                else Log.e(TAG, "parseImageSource: unknown url type: " + temp);
-                src.add(temp);
+        Matcher matcher = mImgSrcPattern.matcher(html);
+        while (matcher.find()) {  // 要排除视频封面，其可能来自其他网站，网址格式不同
+            if (!matcher.group(0).contains("class=\"thumbnail\"") && (temp = matcher.group(1)) != null) {
+                if (temp.startsWith("//"))  // 公式网址以//开头，还原为https://，与WebView解析的url匹配
+                    temp = "https:" + temp;
+                // TODO url的绝对或相对路径(如/ ./ ../ 其实没见过)，可用URL(getArguments().getString(ARG_LINK)+..)
+
+                // 取下一张图的地址时直接用此，所以要保留原名；也因为有扩展名才会缓存
+                if (!src.contains(temp))  // TODO 保留重复图片的顺序(虽然只见过公式重复)
+                    src.add(temp);  // 现在是不去重则滑动时挑不出循环
             }
         }
         mImageSource = src.toArray(new String[src.size()]);
