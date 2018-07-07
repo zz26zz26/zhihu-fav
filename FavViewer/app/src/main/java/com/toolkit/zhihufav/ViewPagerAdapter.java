@@ -327,8 +327,10 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
         String css = "body { margin:1em 1.25em; word-wrap:break-word; line-height:1.6; font-size:16px; }" +
                      "blockquote { margin:1em 0; padding-left:0.7em; color:lightslategray; border-left:0.3em solid; }" +
                      "figure { position:relative; margin:16px -1.25em; }  blockquote figure { margin:16px -0.5em }" + first_figure +
-                     "figure.gif-container::after { position:absolute; left:50%; top:50%; transform:translate(-52%,-45%); color:whitesmoke;" +
-                                                   "content:'GIF'; font:bold 6vw arial; text-align:center; z-index:1; }" +
+                     "figure.gif-box::before { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,.3);" +
+                                              "border:solid 0.8vw whitesmoke; border-radius:15vw; height:15vw; width:15vw; content:''; z-index:1; }" +
+                     "figure.gif-box::after { position:absolute; left:50%; top:50%; transform:translate(-49%,-46%); color:whitesmoke;" +
+                                             "content:'GIF'; font:bold 6vw arial; letter-spacing:.8vw; text-align:center; z-index:1; }" +
                      "img { position:relative; max-width:100%; vertical-align:middle; }  figure img { width:100% !important }" +
                      "img::before { position:absolute; width:100%; height:100%; content:'';" + block_back + "}" +
                      "figcaption { margin:1em; font-size:14px; text-align:center;" + note_color + "}" +
@@ -337,12 +339,11 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
                      "a { text-decoration:none; color:royalblue; }  a.video-box .content { display:none }" +
                      "a.video-box { position:relative; display:block; margin:1em -1.25em; height:55vw; overflow:hidden;" +
                                    "border-radius:2px; box-shadow:0px 0px 5px rgba(0,0,0,.2);" + block_back + "}" +
-                     "figure.gif-container::before, " +
+                     "a.video-box img { position:absolute; top:50%; transform:translateY(-50%); width:100%; }" +
                      "a.video-box::before { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,.3);" +
                                            "border:solid 0.8vw whitesmoke; border-radius:15vw; height:15vw; width:15vw; content:''; z-index:1; }" +
                      "a.video-box::after { position:absolute; left:50%; top:50%; transform:translate(-35%,-50%); border-left:5vw solid whitesmoke;" +
                                           "border-top:3vw solid transparent; border-bottom:3vw solid transparent; content:''; z-index:1; }" +
-                     "a.video-box img { position:absolute; top:50%; transform:translateY(-50%); width:100%; }" +
                      "pre { margin:1em 0; padding:10px; border-radius:4px;" + block_back + "overflow:auto; }" +
                      "code { font-size:14px }"; //  code:not(.language-text) { word-wrap:normal }";  // overflow放code里没用
         String end = "<br><br><p style=\"text-align:right;" + note_color + "\">Q.E.D." +
@@ -371,19 +372,12 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
                      "                console.log('onError: ' + this.getAttribute('data-src'));" +
                      "            }" +  // src=''不显示裂开图标，且保留img::before背景(但视频框里的图没有)；本地文件不存在都有图裂
                      "        };" +     // 与https共用时要开启混合模式才能访问file:// (当然每次都有警告)
-//                     "        img[i].onload = function () {" +
-//                     "            if (this.src.endsWith('.jpg') || this.src.endsWith('.png')) {" +
-//                     "                var obj = this;" +
-//                     "                var xhr = new XMLHttpRequest();" +
-//                     "                xhr.onload = function () {" +  // readyState == 4 (DONE)
-//                     "                    if (xhr.status === 200 && xhr.getResponseHeader('Content-Type') === 'image/gif') {" +
-//                     "                        obj.parentNode.className = 'gif-container';" +
-//                     "                    }" +
-//                     "                };" +
-//                     "                xhr.open('HEAD', this.src.substring(0, this.src.length - 4) + '.gif?head');" +
-//                     "                xhr.send(null);" +  // HEAD的Request照样会被Intercept，要标记一下
-//                     "            }" +  // TODO 超过一帧才标注/用webp原图更小但保存看不了/主要是现在刷新一次又从头来！！！搞得初始化很久(有缓存即触发此)
-//                     "        };" +     // TODO 回答/文章页面里，动图的data-actualsrc直接是gif结尾；只有收藏里仍是jpg（但收藏里帮弄好专栏头图，html也简洁）
+                     "        img[i].onload = function () {" +
+                     "            if (this.hasAttribute('data-actualsrc') && this.src.indexOf('file:') < 0) {" +  // 加载中别改
+                     "                var t = this.getAttribute('data-actualsrc').indexOf('.gif') < 0;" +  // 4.4没endsWith
+                     "                t ? '' : this.parentNode.className = 'gif-box';" +  // TODO 超过一帧再标注
+                     "            }" +  // PS：XMLHttpRequest照样会被Intercept，可在网址末标记个?head
+                     "        };" +
                      "        img[i].src = img[i].src;" +  // 有的图已加载失败才绑定事件，要模拟onclick换出错图(不模拟加载延迟)
                      "    }" +
                      "    ImageArray = img;" +  // 前面不带var的是window全局变量

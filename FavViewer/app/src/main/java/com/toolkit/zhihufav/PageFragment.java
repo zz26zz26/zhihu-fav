@@ -361,6 +361,7 @@ public class PageFragment extends Fragment {
                                 String temp_url = mImageSource[next];
                                 loadImagePage(webView, temp_url);  // 没缩略图时下面无效(没网会空着)
                                 performClickImage(webView, temp_url);  // 已有缩略图就去开大图
+                                mPostponeModeChange = true;  // 借用载入动图，要在loadImage后
                             }
                         }
                     }
@@ -423,9 +424,22 @@ public class PageFragment extends Fragment {
                         HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
                         conn.setConnectTimeout(10000);  // nginx默认60s
                         conn.setReadTimeout(10000);  // get自动调connect，如没网就抛异常
+                        //conn.setRequestMethod("HEAD");  // 只是举例用法，这里并不能用上
+                        //conn.setRequestProperty("Host", url_info.getHost());  // 好像不弄也行
+                        //conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; U; Android 5.1.1; zh-cn; MI 4S Build/LMY47V)");
                         if (conn.getResponseCode() == HttpURLConnection.HTTP_OK) {  // 不然0kb文件也成缓存了
                             super.in = conn.getInputStream();
                             expect_len = conn.getContentLength();
+                            if (url.contains("_r")) {
+                                getActivity().runOnUiThread(new Runnable() {
+                                    @Override
+                                    public void run() {  // 不写f则:右边也转double；全程float算可能出0.500001之类的数字
+                                        String size = (expect_len < 11e3 ? .01f : (float) ((expect_len * 100 >> 20) * .01)) + "M 的";
+                                        String msg = "正在下载 " + size + (url.toLowerCase().endsWith(".gif") ? "GIF" : "大图") + "...";
+                                        Toast.makeText(getActivity(), msg, Toast.LENGTH_SHORT).show();
+                                    }
+                                });
+                            }
                         } else {
                             max_read_len = -1;
                             conn.disconnect();
@@ -490,9 +504,9 @@ public class PageFragment extends Fragment {
             // 还有此函数不能搞耗时操作，不然网速慢时会卡死几十秒(WebView的IO线程有限，能换页但全是白屏)
             // 进来的请求包括favicon.ico、js、图片、视频、重定向；setBlockNetworkLoads也会先进来
             // 图片都自己存一份，方便长按保存图片，没网也能知道是动图了；公式图也得存不然不能导出
-            Log.i(TAG, "shouldInterceptRequest: " + url);
+            Log.i(TAG, "shouldInterceptRequest: " + url);  // if各条件遇见频率高者在前
             if (url.endsWith(".jpg") || url.endsWith(".png") || url.endsWith(".gif") ||
-                    url.endsWith(".webp") || url.contains(PRE_EQUATION)) {  // 出现频率高者在前
+                    url.endsWith(".webp") || url.endsWith(".jpeg") || url.contains(PRE_EQUATION)) {
                 String name = getUrlHash(url);  // 公式图根据tex代码命名，出错这次就不存了(edit抛异常)
                 String type = url.contains(PRE_EQUATION) ? "svg+xml" : url.substring(url.lastIndexOf('.') + 1);
                 try {
@@ -570,6 +584,9 @@ public class PageFragment extends Fragment {
                                 webView.zoomOut();
                     }
                 }, 3000);  // 机子慢2s不行
+            } else if (getContentMode(view) == MODE_IMAGE) {
+                if (mPostponeModeChange) performClickImage(view, url);  // 使滑动看图时下完缩略图能接着下大图/动图
+                mPostponeModeChange = false;
             }
             mOnCreate = false;  // 放在使用之后啊…
         }
@@ -578,7 +595,6 @@ public class PageFragment extends Fragment {
 
     private static class RawImageLoader extends AsyncTask<String, String, String> {
 
-        private int contentLength;
         private String originUrl;
         private WeakReference<PageFragment> fragmentRef;
 
@@ -599,7 +615,6 @@ public class PageFragment extends Fragment {
 
         @Override
         protected String doInBackground(String... params) {
-            HttpURLConnection conn = null;
             String url = params[0];
             String html = params[1];
             originUrl = url;
@@ -612,60 +627,39 @@ public class PageFragment extends Fragment {
             // url_后缀(边长)：均为等比例缩小，缩不了给原图，打死不会放大
             // 测试用例：https://pic3.zhimg.com/v2-6872fdd56e0a82b0ec144dd04b2de093.webp
             // s(25) is(34) xs(50) im(68) l(100) xl(200) xll(400)，按短边算比例，能缩时居中裁成正方形
-            // 180x120 200x112 400x224 1200x500(专栏头图)，长边超限会裁剪(上面在不能缩时即使长边超限也不裁)
+            // 180x120 200x112 400x224 bh(640x320) 1200x500(专栏/想法头图)，长边超限会裁剪(上面在不能缩时长边超限也不裁)
             // 60w(60) 250x0(250) qhd(480) b(600) hd(720) fhd(1080) r(原图)=无后缀，按宽度缩
             String raw_img_url = url.replaceFirst("(?:_[^_/]+)?\\.\\w{3,4}$", "");  // 弄成无后缀
             String raw_img_ext = "_r" + url.replaceFirst(".*(\\.\\w{3,4})$", "$1");  // 用原扩展名
 
-            {   // 首先确认缓存有url指定的图，说明至少小图已下载完成，有得显示，才能开始
-                // 然后看看缓存里有没有对应的gif/jpg大图，没有再去尝试联网
-                String raw_name = raw_img_url.substring(raw_img_url.lastIndexOf('/') + 1);
-                DiskLruCache.Snapshot snapshot = null;
-                try {
-                    if ((snapshot = mCache.get(getUrlHash(url))) != null) {  // 下载中也是null
-                        publishProgress(url);
-                    }
-                    if (snapshot == null || url.contains(PRE_EQUATION)) {  // 公式没大图，也没扩展名
-                        return null;
-                    }
-
-                    if ((snapshot = mCache.get(raw_name + "_r.gif")) != null) {
-                        return raw_img_url + "_r.gif";
-                    }
-                    if ((snapshot = mCache.get(raw_name + raw_img_ext)) != null) {
-                        return raw_img_url + raw_img_ext;
-                    }
-                } catch (IOException e) {
-                    Log.w(TAG, "GetGif: doInBackground: " + e.toString());
-                } finally {
-                    if (snapshot != null) {
-                        snapshot.close();  // 前面return也会执行这里的finally
-                    }
+            // 首先确认缓存有url指定的图，说明至少小图已下载完成，有得显示，才能开始
+            // 然后看看缓存里有没有对应的gif/jpg大图，没有再去尝试联网
+            String raw_name = raw_img_url.substring(raw_img_url.lastIndexOf('/') + 1);
+            DiskLruCache.Snapshot snapshot = null;
+            try {
+                if ((snapshot = mCache.get(getUrlHash(url))) != null) {  // 下载中也是null
+                    publishProgress(url);  // 考虑断网，需要先显示缩略图
                 }
-            }
-
-            try {  // 优先判断gif，毕竟gif也可能比较大…若先判断了尺寸，则大的动图也会去下jpg
-                URL url_info = new URL(raw_img_url + "_r.gif");
-                conn = (HttpURLConnection) url_info.openConnection();  // 没网时抛异常
-                conn.setConnectTimeout(5000);
-                conn.setReadTimeout(5000);      // 设置超时，防止停不掉造成内存泄漏
-                conn.setRequestMethod("HEAD");  // 只要response头部信息；默认GET会把剩下也要了
-                //conn.setRequestProperty("Host", url_info.getHost());  // 好像不弄也行
-                //conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; U; Android 5.1.1; zh-cn; MI 4S Build/LMY47V)");
-                if (conn.getResponseCode() == HttpURLConnection.HTTP_OK) {
-                    contentLength = conn.getContentLength();  // 近似大小，最后输出别太精确
-                    if (conn.getContentType().equals("image/gif"))  // 非动图时是jpeg/png/webp
-                        return raw_img_url + "_r.gif";  // 网址以gif结尾也可能返回png
+                if (snapshot == null || url.contains(PRE_EQUATION)) {  // 公式没大图，也没扩展名
+                    return null;  // 缩略图没下完的不给点开大图
                 }
-            } catch (Exception e) {
-                Log.e(TAG, "GetGif: doInBackground: " + e.toString());
-                return null;  // 断网又没有缓存大图，继续下去可能连小图都看不了(有对应大图的话)
+
+                if ((snapshot = mCache.get(raw_name + "_r.gif")) != null) {
+                    return raw_img_url + "_r.gif";
+                }
+                if ((snapshot = mCache.get(raw_name + raw_img_ext)) != null) {
+                    return raw_img_url + raw_img_ext;
+                }
+            } catch (IOException e) {
+                Log.w(TAG, "RawImageLoader: doInBackground: " + e.toString());
             } finally {
-                if (conn != null)
-                    conn.disconnect();  // keepAlive可复用，disconnect放回连接池
+                if (snapshot != null) {
+                    snapshot.close();  // 前面return也会执行这里的finally
+                }
             }
 
-            {   // x-oss-meta-width/height不论请求s/xl都是原图尺寸，但只有专栏的图片才有此属性
+            if (ConnectivityState.network > 0) {
+                // x-oss-meta-width/height不论请求s/xl都是原图尺寸，但只有专栏的图片才有此属性
                 // 当前WebViewer的html中img标签内的data-rawwidth(没有的一般够大或是公式/视频图)
                 // 提取网址中的文件名以加速匹配，然后找出此文件名所在<img>标签，再在其中找宽高
                 // 标签内没有所需属性时，截出的字串一般就是链接，直接转换会抛异常，耗时x10
@@ -677,10 +671,16 @@ public class PageFragment extends Fragment {
                 sub_end = html.indexOf('>', sub_start);
                 String img = html.substring(sub_start, sub_end);
 
+                // 先判断是否gif，毕竟gif的缩略图仍是静态…至于actualsrc原图在哪个服务器都有…吧
+                sub_start = img.indexOf('"', img.indexOf("data-actualsrc")) + 1;
+                sub_end = img.indexOf('"', sub_start);
+                if (sub_start > 0 && img.substring(sub_start, sub_end).endsWith(".gif"))
+                    return raw_img_url + "_r.gif";  // 统一后缀方便查缓存
+
                 sub_start = img.indexOf('"', img.indexOf("data-rawwidth")) + 1;
                 sub_end = img.indexOf('"', sub_start);
                 int width = sub_start < 1 ? 0 : Integer.parseInt(img.substring(sub_start, sub_end));
-                Log.w(TAG, "image raw width = " + width);
+                Log.w(TAG, "RawImageLoader: image raw width = " + width);
                 if (width >= 800)  // 只比600宽一点的原图就不用下了；压缩不看高度
                     return raw_img_url + raw_img_ext;
             }
@@ -691,9 +691,6 @@ public class PageFragment extends Fragment {
         @Override
         protected void onProgressUpdate(String... values) {
             super.onProgressUpdate(values);
-            // TODO 若异步的4个线程都在background里等待网络响应，则别的任务都会等他们超时才会开始，因此此处也要考虑期间乱点和滑动
-            // TODO 不然只能等数据库html里的gif不必联网验证时才能消除此问题
-            // TODO gif不联网还解决了没有大图的图片总会联网验证有无gif的问题
             if (values == null || values.length == 0) return;
             loadImagePage(getVisibleWebView(), values[0]);
         }
@@ -708,14 +705,6 @@ public class PageFragment extends Fragment {
             if (!originUrl.equals(webView.getTag(R.id.web_tag_url))) return;  // 缩略图要对应
 
             loadImagePage(webView, s);
-            ContentActivity activity = ContentActivity.getReference();
-            if (activity != null) {  // 0.1M以上的才显示文件大小；直接float算可能出0.500001之类的数字
-                String extra = contentLength > .11e6 ? (float) ((contentLength * 10 >> 20) * .1) + "M的" : "";
-                String msg = s.substring(s.lastIndexOf('.') + 1).toUpperCase().equals("GIF") ?
-                        "其实是我" + extra + "GIF哒" :
-                        "其实我还有" + extra + "大图哒";
-                Toast.makeText(activity, msg, extra.isEmpty() ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
-            }
         }
 
     }
