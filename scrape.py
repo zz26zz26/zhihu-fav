@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import sqlite3
 import html.parser
@@ -13,14 +14,14 @@ class fav_parser(html.parser.HTMLParser):
         self.answer_head = []  # 问题标题
         self.answer_user = []  # 答主链接
         self.answer_name = []  # 答主昵称
-        self.answer_data = []  # 答案内容
+        self.answer_text = []  # 答案内容
         self.answer_link = []  # 回答链接
-        self.answer_time = []  # 修改时间
+        self.answer_time = []  # 编辑时间
         self.next_link  = ''   # 下一页链接 只有双引号的字符串可用单引号包住(反过来也行), 不必用r'...'
         self.__tmp_link = ''   # 页码区遇到下一页链接的标签前会碰到别的页码链接
         self.__tag_type = 0    # 1-页码/div/span/a; 2-收藏夹名/h2; 3-题目/h2/a; 4-答主/div/span/a; 5-内容
 
-    def handle_timestamp(self, text):  # 格式：发布/编辑于 2018-01-01 / 昨天 00:00 / 00:00 (即今天)
+    def handle_timestamp(self, text):  # 格式: 发布/编辑于 2018-01-01 / 昨天 00:00 / 00:00 (即今天)
         text = text[text.find('于')+1:].strip()
         if '昨天' in text:
             text = time.strftime("%Y-%m-%d", time.localtime(time.time() - 86400))
@@ -29,14 +30,14 @@ class fav_parser(html.parser.HTMLParser):
         return text
 
     def handle_starttag(self, tag, attrs):
-        if tag == 'p' and ('class', 'visible-expanded') in attrs:
+        if tag == 'p' and ('class', 'visible-expanded') in attrs:     # 注意各type对应的标签范围不能重叠
             self.__tag_type = 6
-        elif tag == 'textarea':
+        elif tag == 'textarea':                                       # 不然handle_endtag可能提前重置type
             self.__tag_type = 5
         elif tag == 'span' and 'author-link-line' in sum(attrs, ()):  # 专栏/回答有 匿名/点赞无; sum转一维
             self.__tag_type = 4
         elif tag == 'h2' and ('class', 'zm-item-title') in attrs:     # 要在下面改[-1]之前append 默认匿名
-            self.__tag_type = 3; self.answer_user.append(''); self.answer_name.append(''); self.answer_time.append('')
+            self.__tag_type = 3
         elif tag == 'h2' and ('id', 'zh-fav-head-title') in attrs:    # 私密收藏夹里面有个<i>图标不影响
             self.__tag_type = 2
         elif tag == 'div' and ('class', 'zm-invite-pager') in attrs:  # 恰好div里面没别的div, 直接用type判
@@ -45,14 +46,18 @@ class fav_parser(html.parser.HTMLParser):
         if self.__tag_type == 1 and tag == 'a':
             self.__tmp_link = dict(attrs)['href']
         elif self.__tag_type == 4 and tag == 'a':
-            url = dict(attrs)['href']                         # 原为/people/xxxx
-            self.answer_user[-1] = url[url.rfind('/')+1:]     # 改为xxxx
+            url = dict(attrs)['href']                      # 原为/people/xxxx
+            self.answer_user[-1] = url[url.rfind('/')+1:]  # 改为xxxx
+        elif self.__tag_type == 3 and tag != 'a':
+            self.answer_user.append('')                    # 遇标题就加一空白项 (<h2>里文字外有个<a>不要再加)
+            self.answer_name.append('')                    # 等读到别的标签或读完html再填数
+            self.answer_time.append('')
         elif tag == 'div' and 'data-entry-url' in sum(attrs, ()):
-            url = dict(attrs)['data-entry-url']               # 纯图片回答没有[显示全部] 专栏没有[编辑于]
-            if url[0] == '/':                                 # 专栏自带完整链接 只需去掉https://
+            url = dict(attrs)['data-entry-url']            # 纯图片回答没有[显示全部] 专栏没有[编辑于]
+            if url[0] == '/':                              # 专栏自带完整链接 只需去掉https://
                 url = 'www.zhihu.com' + url
             elif '://' in url:
-                url = url[url.find('://')+3:]
+                url = url[url.find('://') + 3:]
             self.answer_link.append(url)
 
     def handle_data(self, data):
@@ -65,12 +70,12 @@ class fav_parser(html.parser.HTMLParser):
             self.next_link = self.__tmp_link
         elif self.__tag_type == 2:                            # 收藏夹名前后有\n
             self.folder_name = data.strip()
-        elif self.__tag_type == 3 and len(data) > 0:          # 问题标题在几层标签内 跳过无内容标签
+        elif self.__tag_type == 3 and len(data) > 0:          # 标题在<h2>中的<a>里 跳过无内容标签
             self.answer_head.append(data)
         elif self.__tag_type == 4 and len(data.strip()) > 0:  # 若endtag才置0会让提取下页链接时提前退出
             self.answer_name[-1] = data.strip();  self.__tag_type = 0
         elif self.__tag_type == 5:
-            self.answer_data.append(data)
+            self.answer_text.append(data)
         elif self.__tag_type == 6 and len(data) > 0:
             self.answer_time[-1] = self.handle_timestamp(data)
 
@@ -98,12 +103,12 @@ class img_parser(html.parser.HTMLParser):
             if ('class', 'Avatar AuthorInfo-avatar') in attrs or \
                ('class', 'Avatar Avatar--round AuthorInfo-avatar') in attrs:
                 url = dict(attrs)['src']
-                url = url[0:url.rfind('_')] + url[url.rfind('.'):]  # 没扩展名得png, 太大
+                url = url[:url.rfind('_')] + url[url.rfind('.'):]
                 self.link = url
 
 
 ##########################
-#####   Interfaces   #####
+#####  Helper Funcs  #####
 ##########################
 def check_status(response):
     if response.status != 200:
@@ -121,18 +126,36 @@ def check_database(fav):
         conn.close()
         return False
 
-    link = conn.execute('SELECT link FROM fav WHERE folder="%s";' % fav.folder_name).fetchall()
+    link = conn.execute('SELECT link FROM fav WHERE folder="%s";' %
+                        fav.folder_name).fetchall()
     conn.close()
-    return sum([(f,) in link for f in fav.answer_link])  # 有一个在数据库里就非0, 注意link每个是tuple
+    # 只要有一个在数据库里就返回非0, 注意link里每个都是tuple
+    return sum([(f,) in link for f in fav.answer_link])
 
 
+def extract_filename(src):
+    ''' 提取图片链接的文件名 (去掉路径 尺寸 扩展名)
+
+        同一张图链接可能不同(pic1|pic4.zhimg.com/50|80) 也可能尺寸不同(_b|_r)
+    '''
+    start = src.rfind('/') + 1
+    end = len(src)  # 链接可能不含尺寸和扩展名
+    if   src.find('_', start) > -1: end = src.rfind('_')
+    elif src.find('.', start) > -1: end = src.rfind('.')
+    src = src[start:end]
+    return src
+
+
+##########################
+#####   Interfaces   #####
+##########################
 def update_database(fav):
     ''' 更新收藏夹数据库, fav的内容应属于同一个收藏夹 '''
     conn = sqlite3.connect('fav.db')
     columns = conn.execute('PRAGMA table_info(fav);').fetchall()  # 表中每列属性，无此表返回空
     if len(columns) != 7:
-        if len(columns) != 0:
-            conn.execute('''DROP TABLE IF EXISTS `fav_old`;''')  # 表/列名有.空格/关键字放在反引号``里
+        if len(columns) != 0:  # 表/列名有.空格/关键字放在反引号``里
+            conn.execute('''DROP TABLE IF EXISTS `fav_old`;''')
             conn.execute('''ALTER TABLE `fav` RENAME TO `fav_old`;''')
         conn.execute('''CREATE TABLE fav (folder   TEXT,
                                           title    TEXT,
@@ -146,24 +169,25 @@ def update_database(fav):
     # conn.execute('ALTER TABLE `fav` ADD COLUMN revision TEXT;')
 
     fav_rows = []
-    for i in range(len(fav.answer_data)):  # 每行是一个(tuple)
+    for i in range(len(fav.answer_text)):  # 每行是一个(tuple)
         fav_rows.append((fav.folder_name, fav.answer_head[i], fav.answer_user[i], fav.answer_link[i],
-                         fav.answer_data[i], fav.answer_time[i], fav.answer_name[i]))
+                         fav.answer_text[i], fav.answer_time[i], fav.answer_name[i]))
 
     old_rows = conn.execute('SELECT * FROM fav WHERE folder="%s";' % fav.folder_name).fetchall()
-    old_dat = [r[4] for r in old_rows]  # 判重只要link和content 但为了调试时看的完整就都要了
+    old_txt = [r[4] for r in old_rows]  # 判重只要link和content 但为了调试时看的完整就都要了
     old_lnk = [r[3] for r in old_rows]
     new_lnk = [r[3] for r in fav_rows]
     insert = [r for r in fav_rows if r[3] not in old_lnk]  # 递推式/推导式 [3:5]的区间是[3,5)
-    update = [r for r in fav_rows if r[3] in old_lnk and r[4] not in old_dat]  # (即edited)内容没变的不显示
+    update = [r for r in fav_rows if r[3] in old_lnk and r[4] not in old_txt]  # (即edited)内容没变的不显示
     delete = [r for r in old_rows if r[3] not in new_lnk]  # 也可能是要求修改
 
     if fav.next_link != '':  # 下一页链接非空说明提前退出 收藏夹没遍历完 没遍历到的都认为删除了
-        print('Get', len(fav.answer_data), 'mostly new collection items')
+        print('Get', len(fav.answer_text), 'mostly new collection items')
         print('Including %d new and %d edited items.' % (len(insert), len(update)))
     else:
-        print('Get all', len(fav.answer_data), 'collection items')
-        print('Including %d new, %d edited and find %d deleted items.' % (len(insert), len(update), len(delete)))
+        print('Get all', len(fav.answer_text), 'collection items')
+        print('Including %d new, %d edited and find %d deleted items.' %
+              (len(insert), len(update), len(delete)))
 
     # REPLACE不能用WHERE, 唯一(组合)索引一致就先删再插(显然没变的也删) (primary key/unique/unique index都看)
     conn.executemany('INSERT OR REPLACE INTO fav VALUES (?,?,?,?,?,?,?);', fav_rows)
@@ -224,25 +248,27 @@ def get_data(entry_url, header, ignore_old = False):
         fav.next_link = ''
         fav.feed(page_html)
         print('(feed:%.3fs)' % (time.clock() - t0), end=' ')
-        if len(fav.answer_head) == len(fav.answer_data) and \
-           len(fav.answer_user) == len(fav.answer_data) and \
-           len(fav.answer_link) == len(fav.answer_data) and \
-           len(fav.answer_name) == len(fav.answer_data) and \
-           len(fav.answer_time) == len(fav.answer_data):
+        if len(fav.answer_head) == len(fav.answer_text) and \
+           len(fav.answer_user) == len(fav.answer_text) and \
+           len(fav.answer_link) == len(fav.answer_text) and \
+           len(fav.answer_name) == len(fav.answer_text) and \
+           len(fav.answer_time) == len(fav.answer_text):
             print('')
         else:
-            print('-', len(fav.answer_head), len(fav.answer_user), len(fav.answer_link), 
-                       len(fav.answer_data), len(fav.answer_time), len(fav.answer_name))
+            print('-', len(fav.answer_head), len(fav.answer_user), len(fav.answer_link),
+                       len(fav.answer_text), len(fav.answer_time), len(fav.answer_name))
         
         if ignore_old and check_database(fav):
             break
         else:
             time.sleep(2)  # 1s太短可能被搞
 
-    # 专栏的日期要进文章页才有
+    # gif在回答页才直接给出 专栏的日期要进文章页才有
+    pattern = re.compile(r'<img[^>]*\ssrc="([^"]*)"[^>]*>')
     for i in range(len(fav.answer_link)):
         link = 'https://' + fav.answer_link[i]
-        if 'zhuanlan' not in link: continue
+        fav_imgs = [m for m in pattern.finditer(fav.answer_text[i])]
+        if 'zhuanlan' not in link and len(fav_imgs) < 1: continue
         
         print('Requesting', link, end=' ')
         t0 = time.clock()
@@ -251,11 +277,26 @@ def get_data(entry_url, header, ignore_old = False):
         print('(%.3fs)' % (time.clock() - t0), end=' ')
         if check_status(response): continue
 
-        page_html = response.read().decode()  # 找div里的span内的文本(标签中间即>之后<之前)
-        time_pos = page_html.find('<div class="ContentItem-time"')
-        time_pos = page_html.find('<span ', time_pos)
-        time_pos = page_html.find('>', time_pos) + 1
-        fav.answer_time[i] = fav.handle_timestamp(page_html[time_pos:page_html.find('<',time_pos)])
+        # gif网址的对应补充 (page里的图会比fav的多个头像和一些占位svg)
+        page_html = response.read().decode()  # 有分组时findall只返回分组的内容
+        page_srcs = [s for s in pattern.findall(page_html) if s.endswith('.gif')]
+        page_gifs = [extract_filename(s) for s in page_srcs]  # 各元素要与page_srcs对应
+        if len(page_gifs) > 0:
+            for fav_img in fav_imgs[::-1]:  # 插入点后的匹配区间都得变 因此从后往前才方便
+                fav_src = extract_filename(fav_img.group(1))
+                if fav_src not in page_gifs: continue
+                idx = page_gifs.index(fav_src)  # index找不到会抛异常
+                pos = fav_img.end(1) + 1  # 在原html中src的引号后插入 保留原src以载入静止图
+                add = ' data-actualsrc="' + page_srcs[idx] + '"'  # 用新属性装gif地址
+                fav.answer_text[i] = fav.answer_text[i][:pos] + add + fav.answer_text[i][pos:]
+
+        # 文章页的编辑日期提取
+        if 'zhuanlan' in link:  # 找div里的span内的文本(标签中间即>之后<之前)
+            time_pos = page_html.find('<div class="ContentItem-time"')
+            time_pos = page_html.find('<span ', time_pos)
+            time_pos = page_html.find('>', time_pos) + 1
+            fav.answer_time[i] = fav.handle_timestamp(page_html[time_pos : page_html.find('<', time_pos)])
+
         time.sleep(1)
         print('')
     
@@ -322,7 +363,7 @@ if __name__ == '__main__':  # 脚本模式运行此文件时进入
 
     # 可直接设置fav_entry链接爬取指定的收藏夹(此时上面all_fav后到这一行之间的代码都可删去)
     # fav_entry = ['https://www.zhihu.com/collection/106496199']
-    # fav_title = ['十八字以内...']  # 这个随便设 len与entry一致即可
+    # fav_title = ['十八字以内...']  # 这个随便设 只要len与entry一致
     for i in range(0, len(fav_entry)):
         print('\n%s (%s)' % (fav_entry[i], fav_title[i]))
         fav = get_data(fav_entry[i], header, ignore_old=True)
