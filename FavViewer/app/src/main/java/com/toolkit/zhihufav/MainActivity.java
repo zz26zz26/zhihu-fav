@@ -500,7 +500,7 @@ public class MainActivity extends AppCompatActivity {
             params.setMargins(t_param.leftMargin, t_param.topMargin, t_param.rightMargin, t_param.bottomMargin);
             box.setPadding(template.getPaddingLeft(), template.getPaddingTop(), template.getPaddingRight(), template.getPaddingBottom());
             box.setText(folder);
-            box.setTag("folder_" + folder);
+            box.setTag("folder_" + folder.replace(" ", "\0"));  // 空格会与拼接时用的分隔符冲突
             box.setMaxEms(7);
             box.setMaxLines(1);
             box.setEllipsize(TextUtils.TruncateAt.END);

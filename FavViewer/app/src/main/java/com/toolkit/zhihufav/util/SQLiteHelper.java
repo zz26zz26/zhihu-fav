@@ -236,7 +236,7 @@ public class SQLiteHelper {
             Log.e(TAG, "getFolderName: " + e.toString());
         }
         return res.toArray(new String[res.size()]);  // 空间够大时，返回值就是new出的地址
-//        return new String[]{"十八字以内无图回答，犀利精辟短小而精干", "一本正经地扯淡", "角川书店发售"};
+//        return new String[]{"十八字以内无图回答，犀利精辟短小而精干", "一本正经地扯淡", "角 川 书 店 发 售"};
 //        return new String[]{"aaaaaaaaa", "iiiiiiiii", "qqqqqqqqq", "MMMMMMMMM", "XXXXXXXXX", "WWWWWWWWW"};
     }
 
@@ -401,7 +401,7 @@ public class SQLiteHelper {
         if (type != null && !type.isEmpty()) {
             sql.append(" HAVING (");
             int index = 0;
-            String[] types = type.split("\\s+");
+            String[] types = type.split(" +");  // 收藏夹名称可含各种空白，遂只对空格转义并按其分割
             if (types[index].contains("type_")) {  // 先是类型
                 index = 1;
                 if (type.contains("type_article"))
@@ -429,7 +429,7 @@ public class SQLiteHelper {
                 sql.append("folder IN (");  // IN比连串的OR快
                 for (int i = index; i < types.length; i++) {
                     sql.append("?");
-                    args.add(types[i].substring("folder_".length()));
+                    args.add(types[i].substring("folder_".length()).replace("\0", " "));
                     sql.append((i < types.length - 1) ? ", " : ")");
                 }
             }

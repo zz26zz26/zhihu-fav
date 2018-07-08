@@ -430,7 +430,7 @@ public class PageFragment extends Fragment {
                         if (conn.getResponseCode() == HttpURLConnection.HTTP_OK) {  // 不然0kb文件也成缓存了
                             super.in = conn.getInputStream();
                             expect_len = conn.getContentLength();
-                            if (url.contains("_r")) {
+                            if (url.contains("_r") && getActivity() != null) {
                                 getActivity().runOnUiThread(new Runnable() {
                                     @Override
                                     public void run() {  // 不写f则:右边也转double；全程float算可能出0.500001之类的数字
