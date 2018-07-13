@@ -5,6 +5,7 @@ import android.database.DatabaseUtils;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteException;
 import android.os.AsyncTask;
+import android.text.TextUtils;
 import android.util.Log;
 
 import com.toolkit.zhihufav.ContentActivity;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -53,7 +55,7 @@ public class SQLiteHelper {
 
     private static final String ANONYMOUS_USER = "匿名用户";
     private static final String[] COLUMN_NAME =
-            {"folder", "title", "author", "link", "content", "revision", "name"};
+            {"folder", "title", "author", "link", "content", "revision", "name", "serial"};
     private static final HashMap<String, Integer> COLUMN_INDEX = new HashMap<>(8);  // 用列名查列号
     static { for (int i = 0; i < COLUMN_NAME.length; i++) COLUMN_INDEX.put(COLUMN_NAME[i], i); }
 
@@ -296,25 +298,35 @@ public class SQLiteHelper {
         ArrayList<String> args = getRawSql(mKey, mField, mType, mSort);
         String sql = args.remove(0);
 
-        // 强行排序可用于减少OFFSET以节省时间，查询时加条件[列]>=[上次LIMIT结果最后一项在该列的值]，这样OFFSET用1即可
-        // 按其他列排序时亦可用此技巧，最后几项重复时用offset记录重复数量（若整个LIMIT都是同一个值就在原offset上累加）
-        int sortColumn;
-        if (mSort != null && !mSort.isEmpty()) {
-            sortColumn = getColumnIndex(mSort.substring(0, mSort.indexOf(' ')));
-        } else {
-            sortColumn = getColumnIndex("link");  // GROUP BY link其实已经这么排了
-            sql += " ORDER BY link";  // 使格式与指定排序列时一致，方便替换
-        }
-        if (mOffsetString != null) {  // 可能为""，如匿名用户的用户名
-            String rep = sql.contains("HAVING") ? " AND " : " HAVING ";
-            rep += COLUMN_NAME[sortColumn];
-            rep += mSort.toLowerCase().contains("desc") ? " <= " : " >= ";  // 降序时反过来
-            rep += "'" + mOffsetString + "' ";
-            sql = sql.replaceFirst(".(?=ORDER BY)", rep);  // 匹配ORDER BY前面的那个空格
-        }
         // 中文列排序可在列名和ASC/DESC之间插入COLLATE LOCALIZED，但是上面的>=并不是这个规则
         // 因此只能在建表的时候就多加这句，如CREATE TABLE fav (title TEXT COLLATE LOCALIZED, ...)
         // LOCALIZED、UNICODE为安卓特有，SQLite自身还支持BINARY(默认)、RTRIM(忽略结尾空格)、NOCASE
+
+        // 强行排序可用于减少OFFSET以节省时间，查询时加条件[列]>=[上次LIMIT结果最后一项在该列的值]，这样OFFSET用1即可
+        // 按其他列排序时亦可用此技巧，最后几项重复时用offset记录重复数量（若整个LIMIT都是同一个值就在原offset上累加）
+        int sortColumn, serialColumn = getColumnIndex("serial");
+        if (!TextUtils.isEmpty(mSort)) {
+            sortColumn = getColumnIndex(mSort.substring(0, mSort.indexOf(' ')));  // 去掉asc/desc
+        } else {
+            sortColumn = serialColumn;  // GROUP BY link即按link排序后取同link最后一个
+            sql += " ORDER BY serial desc";  // 即使serial全空也能通过OFFSET分页，当然顺序和按link排一样
+        }
+        if (mOffset > 0) {  // 第一轮查询显然不必加条件，但之后不写比较条件会从头搜！
+            String quote = sortColumn == serialColumn ? "" : "'";  // 序号列不用引号
+            int ins_pos = sql.indexOf("ORDER BY") - 1;  // 在ORDER BY前的空格处插入
+            String ins = sql.contains("HAVING") ? " AND " : " HAVING ";
+            ins += "(" + COLUMN_NAME[sortColumn];
+            if (mOffsetString != null) {
+                ins += sql.substring(ins_pos).contains("desc") ? " <= " : " >= ";  // asc可不写
+                ins += quote + mOffsetString + quote;
+            }
+            if (sortColumn == serialColumn) {
+                ins += (mOffsetString != null) ? " OR serial" : "";
+                ins += " IS NULL";  // 除了序号列不会在第一轮之后遇到NULL
+            }
+            ins += ")";
+            sql = sql.substring(0, ins_pos) + ins + sql.substring(ins_pos);
+        }
 
         // 分页
         if (limit > 0) {
@@ -325,29 +337,33 @@ public class SQLiteHelper {
         Log.w(TAG, "arg = " + args);
 
         // 执行和处理查询数据
-        String[] row_data;
+        Object[] row_data;
+        String[] result_row;
         ArrayList<String[]> result = new ArrayList<>();
         int nameColumn = getColumnIndex("name");
         try {
             Cursor cursor = mDatabase.rawQuery(sql, args.toArray(new String[args.size()]));  // 不够大会分配新空间
             while (cursor.moveToNext()) {
-                row_data = new String[COLUMN_NAME.length];
+                row_data = new Object[COLUMN_NAME.length];  // 初始化为null
+                result_row = new String[COLUMN_NAME.length - 1];  // 序号列不直接显示在界面
                 for (int col = 0; col < COLUMN_NAME.length; col++) {
-                    row_data[col] = cursor.getString(col);
+                    if (!cursor.isNull(col))  // 值为null或抛异常，但其实可以继续跑
+                        row_data[col] = col < COLUMN_NAME.length - 1 ?
+                                (result_row[col] = cursor.getString(col)) : cursor.getLong(col);
 
                     if (col == sortColumn) {
-                        if (row_data[col].equals(mOffsetString)) {
+                        if (Objects.equals(row_data[col], mOffsetString)) {  // 序号列可能都是null
                             mOffset++;    // 这一列的值都一样就一直加
                         } else {
-                            mOffset = 1;  // 有不一样说明OffsetString能起作用
-                            mOffsetString = row_data[col];
+                            mOffset = 1;  // 有不一样说明OffsetString能起作用；可以是""，如匿名用户的用户名
+                            mOffsetString = Objects.toString(row_data[col], null);  // 传null得null
                         }
                     }
-                    if (col == nameColumn && row_data[col].isEmpty()) {
-                        row_data[col] = ANONYMOUS_USER;  // 放mOffsetString之后，不然按名字排序时出错
+                    if (col == nameColumn && result_row[col].isEmpty()) {
+                        result_row[col] = ANONYMOUS_USER;  // 放mOffsetString之后，不然按名字排序时出错
                     }  // 主要是逆序时加载到排在最前的匿名用户("")后，又从"匿"字开始搜了，而不是""
                 }
-                result.add(row_data);  // 不new则result里全是最后一行的内容
+                result.add(result_row);  // 不new则result里全是最后一行的内容
             }
             cursor.close();
         } catch (Exception e) {  // 比如跑着跑着文件被删…
@@ -363,7 +379,7 @@ public class SQLiteHelper {
         ArrayList<String> args = new ArrayList<>();
 
         // 关键词和搜索区域
-        if (key != null && field != null && !key.isEmpty() && !field.isEmpty()) {
+        if (!TextUtils.isEmpty(key) && !TextUtils.isEmpty(field)) {
             key = keySimplify(key);
             String cur_key;
             String[] fields = field.split("\\s+");  // 分空串得一个空串元素的数组
@@ -398,7 +414,7 @@ public class SQLiteHelper {
         sql.append(" GROUP BY ").append("link");
 
         // 按类别筛选，含类型/包含/收藏夹名，其中类型和收藏夹名都是全选时为空
-        if (type != null && !type.isEmpty()) {
+        if (!TextUtils.isEmpty(type)) {
             sql.append(" HAVING (");
             int index = 0;
             String[] types = type.split(" +");  // 收藏夹名称可含各种空白，遂只对空格转义并按其分割
@@ -437,7 +453,7 @@ public class SQLiteHelper {
         }
 
         // 排序
-        if (sort != null && !sort.isEmpty()) {
+        if (!TextUtils.isEmpty(sort)) {
             sql.append(" ORDER BY ").append(sort);
         }
 
@@ -636,7 +652,7 @@ public class SQLiteHelper {
                 while ((line = br.readLine()) != null && !isCancelled()) {
                     sql.append(line).append("\n");  // readLine不含换行符
                     if (line.endsWith(";")) {  // 导出的sql已把'换成''；建表也是多行；内容行末可能为);
-                        if (sql.substring(0, 6).equals("INSERT") && !line.endsWith("');")) continue;
+                        if (sql.substring(0, 6).equals("INSERT") && !line.endsWith(") ;")) continue;
                         if (line.startsWith("COMMIT")) count = Integer.MAX_VALUE - 1;  // 全部完成
                         db.execSQL(sql.substring(0, sql.length() - 2));  // 语句不能留最后的分号和换行
                         sql.delete(0, sql.length());  // setLength还要把后面空间置\0，这个快
