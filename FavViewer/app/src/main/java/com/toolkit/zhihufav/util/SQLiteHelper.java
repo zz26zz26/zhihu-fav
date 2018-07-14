@@ -378,44 +378,9 @@ public class SQLiteHelper {
         StringBuilder sql = new StringBuilder("SELECT * FROM " + mTableName);
         ArrayList<String> args = new ArrayList<>();
 
-        // 关键词和搜索区域
-        if (!TextUtils.isEmpty(key) && !TextUtils.isEmpty(field)) {
-            key = keySimplify(key);
-            String cur_key;
-            String[] fields = field.split("\\s+");  // 分空串得一个空串元素的数组
-            String[] text_keys = key.split("\\s+");  // 标题/昵称/时间等不是html不用转义
-            String[] content_keys = htmlEscape(key).split("\\s+");  // 内容爬下来时就是html
-
-            sql.append(" WHERE (");
-            for (int i = 0; i < fields.length; i++) {
-                for (int j = 0; j < content_keys.length; j++) {
-                    cur_key = (fields[i].equals("content") ? content_keys[j] : text_keys[j]);
-                    sql.append(fields[i]).append(" LIKE ?");  // 预编译写法不必转义()[]/\''""
-                    args.add("%" + cur_key + "%");            // 但还是要弄%(不然搜%%要很久)
-                    if (cur_key.contains("%")) {              // 还要记得修改转义字符自身
-                        cur_key = cur_key.replace("/", "//").replace("%", "/%");
-                        args.set(args.size() - 1, "%" + cur_key + "%");
-                        sql.append(" ESCAPE '/'");
-                    }
-                    if (fields[i].equals("name") && cur_key.equals(ANONYMOUS_USER)) {
-                        sql.replace(sql.lastIndexOf("LIKE"), sql.length(), "= ?");  // 把刚加的LIKE..换成= ?
-                        args.set(args.size() - 1, "");  // 参数直接是""，不要通配符了
-                    }
-                    if (j + 1 < content_keys.length)
-                        sql.append(" AND ");  // 最后一个后不加连接词
-                }
-                if (i + 1 < fields.length)
-                    sql.append(" OR ");  // OR优先级低，不必给AND加括号
-            }
-            sql.append(")");  // 最外层加一个即可，方便替换修改
-        }
-
-        // 去重(分组后同一组的记录只输出最后一条)
-        sql.append(" GROUP BY ").append("link");
-
         // 按类别筛选，含类型/包含/收藏夹名，其中类型和收藏夹名都是全选时为空
         if (!TextUtils.isEmpty(type)) {
-            sql.append(" HAVING (");
+            sql.append(" WHERE (");
             int index = 0;
             String[] types = type.split(" +");  // 收藏夹名称可含各种空白，遂只对空格转义并按其分割
             if (types[index].contains("type_")) {  // 先是类型
@@ -450,6 +415,45 @@ public class SQLiteHelper {
                 }
             }
             sql.append(")");
+        }
+
+        // 去重(分组后同一组的记录只输出最后一条，因此若group后才筛选folder可能会被去重查不到)
+        sql.append(" GROUP BY ").append("link");
+
+        // 关键词和搜索区域
+        if (!TextUtils.isEmpty(key) && !TextUtils.isEmpty(field)) {
+            int key_in_anonymous = 0;
+            key = keySimplify(key);
+            String cur_key;
+            String[] fields = field.split("\\s+");  // 分空串得一个空串元素的数组
+            String[] text_keys = key.split("\\s+");  // 标题/昵称/时间等不是html不用转义
+            String[] content_keys = htmlEscape(key).split("\\s+");  // 内容爬下来时就是html
+
+            sql.append(" HAVING (");
+            for (int i = 0; i < fields.length; i++) {
+                for (int j = 0; j < content_keys.length; j++) {
+                    cur_key = (fields[i].equals("content") ? content_keys[j] : text_keys[j]);
+                    sql.append(fields[i]).append(" LIKE ?");  // 预编译写法不必转义()[]/\''""
+                    args.add("%" + cur_key + "%");            // 但还是要弄%(不然搜%%要很久)
+                    if (cur_key.contains("%")) {              // 还要记得修改转义字符自身
+                        cur_key = cur_key.replace("/", "//").replace("%", "/%");
+                        args.set(args.size() - 1, "%" + cur_key + "%");
+                        sql.append(" ESCAPE '/'");
+                    }
+                    if (fields[i].equals("name") && ANONYMOUS_USER.contains(cur_key)) {
+                        key_in_anonymous++;  // 正常用户名也可能含这些字，不能影响那些查询
+                    }
+                    if (j + 1 < content_keys.length)
+                        sql.append(" AND ");  // 最后一个后不加连接词
+                }
+                if (i + 1 < fields.length)
+                    sql.append(" OR ");  // OR优先级低，不必给AND加括号
+            }
+            if (key_in_anonymous == content_keys.length) {  // 所有关键词都要能匹配“匿名用户”
+                sql.append(" OR name = ?");  // 不用LIKE..换成= ?
+                args.add("");  // 参数直接是""，不要通配符了
+            }
+            sql.append(")");  // 最外层加一个即可，方便替换修改
         }
 
         // 排序
