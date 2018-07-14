@@ -258,6 +258,10 @@ class ListViewAdapter extends BaseAdapter {
             String title = mTitle.get(position);
             String summary = mSummary.get(position);
 
+            int title_visibility = title.isEmpty() ? View.GONE : View.VISIBLE;
+            if (holder.title.getVisibility() != title_visibility)  // 想法没标题
+                holder.title.setVisibility(title_visibility);
+
             holder.title.setText(Html.fromHtml(title));  // 4.4只能用这种调用
             holder.summary.setText(Html.fromHtml(summary));
             holder.info.setText(Html.fromHtml(info));
@@ -426,8 +430,9 @@ class ListViewAdapter extends BaseAdapter {
         }
         // 如果想按照编辑时间找，则直接显示原本的时间，方便使用时学习关键词格式
         String divider = mContext.getString(R.string.info_divider);
-        String info = "来自: " + folder + divider + revision + divider + name +
-                (lnk.startsWith("zhuanlan") ? "的文章" : "的回答");
+        String info = "来自: " + folder + divider +
+                (revision.isEmpty() ? "" : revision + divider) +
+                (name + "的" + SQLiteHelper.getLinkType(lnk));
 
 
         mTitle.add(title);

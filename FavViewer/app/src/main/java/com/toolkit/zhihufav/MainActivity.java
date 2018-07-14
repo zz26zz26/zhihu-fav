@@ -557,12 +557,14 @@ public class MainActivity extends AppCompatActivity {
                 group = (ViewGroup) view.findViewById(R.id.linearLayout_type);  // 文章/回答
                 for (int i = 0, checked = 0, n = group.getChildCount(); i < n; i++) {
                     CheckBox box = (CheckBox) group.getChildAt(i);
-                    if (box.isChecked()) {
+                    if (box.isChecked() && box.getVisibility() == View.VISIBLE) {
                         checked++;
                         type_builder.append(box.getTag()).append(" ");
                     }
-                    if (checked == n)  // 全选就是没选
+                    if (checked == n - 1)  // 全选就是没选(有个隐藏，隐藏的勾不算)
                         type_builder.delete(0, type_builder.length());  // delete不置0，比setLength快
+                    if (i == n - 1 && checked == 0)  // 全没选找隐藏
+                        type_builder.append((view.findViewById(R.id.checkBox_pin)).getTag()).append(" ");
                 }
                 group = (ViewGroup) view.findViewById(R.id.gridLayout_other);  // 图片/视频
                 for (int i = 0, n = group.getChildCount(); i < n; i++) {
@@ -673,9 +675,6 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(MainActivity.this, R.string.filter_no_select_hint, Toast.LENGTH_SHORT).show();
             }
         };
-        group = (ViewGroup) view.findViewById(R.id.linearLayout_type);
-        for (int i = 0, n = group.getChildCount(); i < n; i++)
-            group.getChildAt(i).setOnClickListener(no_check);
         group = (ViewGroup) view.findViewById(R.id.gridLayout_field);
         for (int i = 0, n = group.getChildCount(); i < n; i++)
             group.getChildAt(i).setOnClickListener(no_check);

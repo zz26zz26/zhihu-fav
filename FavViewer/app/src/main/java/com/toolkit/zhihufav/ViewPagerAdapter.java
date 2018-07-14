@@ -280,7 +280,10 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
     public CharSequence getPageTitle(int position) {
         if (mDataSource == null) return null;
         String[] item = mDataSource.getItem(position);
-        return (item == null) ? null : item[SQLiteHelper.getColumnIndex("title")];
+        if (item == null) return null;
+        String title = item[SQLiteHelper.getColumnIndex("title")];
+        return !title.isEmpty() ? title : getPageUser(position) + "的" +
+                SQLiteHelper.getLinkType(getPageLink(position));
     }
 
     String getPageUser(int position) {
@@ -307,6 +310,8 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
         if (item == null) return "";
 
         String link = item[SQLiteHelper.getColumnIndex("link")];  // getPageLink会加上https前缀
+        String author = item[SQLiteHelper.getColumnIndex("name")];
+        String revision = item[SQLiteHelper.getColumnIndex("revision")];
         String content_html = item[SQLiteHelper.getColumnIndex("content")];
         // CSS边距由外到内：offset - margin - border - padding；颜色简写如#f35 = #ff3355 (不支持ARGB)
         // 属性顺序为top - right - bottom - left (不写全的时候 right=top, bottom=top, left=right)
@@ -323,6 +328,9 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
         String note_color = "color:#777;";  // 图片说明文字和末尾答案信息颜色，日夜都能看清
         String block_back = "background:rgba(128,128,128,.1);";  // 底色即gray，之前是night ?"#333":"whitesmoke"
         String first_figure = link.startsWith("zhuanlan") ? "body>figure:first-child { display:none }" : "";  // 头图无边距margin-top:-1em;
+
+        String author_info = author.isEmpty() ? "" : "作者：" + author;
+        String revision_info = revision.isEmpty() ? "" : "编辑于 " + revision;
 
         String css = "body { margin:1em 1.25em; word-wrap:break-word; line-height:1.6; font-size:16px; }" +
                      "blockquote { margin:1em 0; padding-left:0.7em; color:lightslategray; border-left:0.3em solid; }" +
@@ -347,8 +355,8 @@ class ViewPagerAdapter extends FragmentStatePagerAdapter {
                      "pre { margin:1em 0; padding:10px; border-radius:4px;" + block_back + "overflow:auto; }" +
                      "code { font-size:14px }"; //  code:not(.language-text) { word-wrap:normal }";  // overflow放code里没用
         String end = "<br><br><p style=\"text-align:right;" + note_color + "\">Q.E.D." +
-                     "<br>作者：" + getPageUser(position) +
-                     "<br>编辑于 " + getPageDate(position) + "</p>" +
+                     "<br>" + author_info +
+                     "<br>" + revision_info + "</p>" +
 
                      "<script>" +
                      "function on_init() {" +

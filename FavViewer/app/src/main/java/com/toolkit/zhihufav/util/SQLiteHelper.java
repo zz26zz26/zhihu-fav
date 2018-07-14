@@ -53,7 +53,7 @@ public class SQLiteHelper {
     private static WeakReference<SQLiteHelper> sReference;
     private final byte[] mLock = new byte[0];
 
-    private static final String ANONYMOUS_USER = "匿名用户";
+    private static final String EMPTY_USER = "匿名用户";  // 知乎用户
     private static final String[] COLUMN_NAME =
             {"folder", "title", "author", "link", "content", "revision", "name", "serial"};
     private static final HashMap<String, Integer> COLUMN_INDEX = new HashMap<>(8);  // 用列名查列号
@@ -86,6 +86,10 @@ public class SQLiteHelper {
 
     public static int getColumnIndex(String colName) {
         return COLUMN_INDEX.get(colName);
+    }
+
+    public static String getLinkType(String s) {
+        return s.contains("zhuanlan") ? "文章" : s.contains("pin") ? "想法" : "回答";
     }
 
     public static String htmlEscape(String s) {
@@ -255,8 +259,8 @@ public class SQLiteHelper {
         ArrayList<String> args = getRawSql(key, field, type, null);  // 排序不影响数量
         String sql = args.remove(0);
         sql = sql.replace("SELECT *", "SELECT COUNT(DISTINCT link)");
-        sql = sql.replace("GROUP BY link", "");  // 后面可能没有HAVING
-        sql = sql.replace("HAVING", "AND");
+        sql = sql.replace("GROUP BY link", "");  // 若分组则COUNT会计算每一组的数量
+        sql = sql.replace("HAVING", sql.contains("WHERE") ? "AND" : "WHERE");  // type为空时没WHERE
 
         Log.w(TAG, "sql = " + sql);
         Log.w(TAG, "arg = " + args);
@@ -322,7 +326,7 @@ public class SQLiteHelper {
             }
             if (sortColumn == serialColumn) {
                 ins += (mOffsetString != null) ? " OR serial" : "";
-                ins += " IS NULL";  // 除了序号列不会在第一轮之后遇到NULL
+                ins += " IS NULL";  // 除序号列外都不会在第一轮后再遇到NULL
             }
             ins += ")";
             sql = sql.substring(0, ins_pos) + ins + sql.substring(ins_pos);
@@ -360,7 +364,7 @@ public class SQLiteHelper {
                         }
                     }
                     if (col == nameColumn && result_row[col].isEmpty()) {
-                        result_row[col] = ANONYMOUS_USER;  // 放mOffsetString之后，不然按名字排序时出错
+                        result_row[col] = EMPTY_USER;  // 放mOffsetString之后，不然按名字排序时出错
                     }  // 主要是逆序时加载到排在最前的匿名用户("")后，又从"匿"字开始搜了，而不是""
                 }
                 result.add(result_row);  // 不new则result里全是最后一行的内容
@@ -381,14 +385,16 @@ public class SQLiteHelper {
         // 按类别筛选，含类型/包含/收藏夹名，其中类型和收藏夹名都是全选时为空
         if (!TextUtils.isEmpty(type)) {
             sql.append(" WHERE (");
-            int index = 0;
             String[] types = type.split(" +");  // 收藏夹名称可含各种空白，遂只对空格转义并按其分割
-            if (types[index].contains("type_")) {  // 先是类型
-                index = 1;
-                if (type.contains("type_article"))
-                    sql.append("link > 'z'");  // "zhuanlan.zhihu..." > "z"
+            int index = 0;
+            if (types[index].contains("type_")) {  // 先是类型，只有一项
+                if (types[index].contains("type_article"))
+                    sql.append("link > 'z'");  // "zhuanlan.zhihu..." > "z" | "www.zhihu.com..." < "z"
+                else if (types[index].contains("type_answer"))
+                    sql.append("link LIKE '%que%'");  // ".com" < "q" | "pin" < "q"
                 else
-                    sql.append("link < 'z'");  // "www.zhihu.com..."  < "z"
+                    sql.append("SUBSTR(link, 15, 1) = 'p'");  // 下标从1起
+                index = 1;
             }
 
             if (index < types.length) {  // 再是包含
@@ -422,7 +428,7 @@ public class SQLiteHelper {
 
         // 关键词和搜索区域
         if (!TextUtils.isEmpty(key) && !TextUtils.isEmpty(field)) {
-            int key_in_anonymous = 0;
+            int key_in_empty_user = 0;
             key = keySimplify(key);
             String cur_key;
             String[] fields = field.split("\\s+");  // 分空串得一个空串元素的数组
@@ -440,8 +446,8 @@ public class SQLiteHelper {
                         args.set(args.size() - 1, "%" + cur_key + "%");
                         sql.append(" ESCAPE '/'");
                     }
-                    if (fields[i].equals("name") && ANONYMOUS_USER.contains(cur_key)) {
-                        key_in_anonymous++;  // 正常用户名也可能含这些字，不能影响那些查询
+                    if (fields[i].equals("name") && EMPTY_USER.contains(cur_key)) {
+                        key_in_empty_user++;  // 正常用户名也可能含这些字，不能影响那些查询
                     }
                     if (j + 1 < content_keys.length)
                         sql.append(" AND ");  // 最后一个后不加连接词
@@ -449,7 +455,7 @@ public class SQLiteHelper {
                 if (i + 1 < fields.length)
                     sql.append(" OR ");  // OR优先级低，不必给AND加括号
             }
-            if (key_in_anonymous == content_keys.length) {  // 所有关键词都要能匹配“匿名用户”
+            if (key_in_empty_user == content_keys.length) {  // 所有关键词都要能匹配“匿名用户”
                 sql.append(" OR name = ?");  // 不用LIKE..换成= ?
                 args.add("");  // 参数直接是""，不要通配符了
             }

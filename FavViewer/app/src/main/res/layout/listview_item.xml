@@ -1,17 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_height="wrap_content"
     android:background="?android:attr/itemBackground">
     <!--background添加波纹(ripple)效果 selectableItemBackgroundBorderless才要求5.0-->
     <!--又由于5.0之前不能设置ripple的背景，只能弄个双层，且ripple放外层还不行-->
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="wrap_content"
         android:background="?android:attr/selectableItemBackground"
         android:divider="?attr/list_divider"
         android:orientation="vertical"
+        android:paddingTop="4dp"
         android:showDividers="end">
 
         <TextView
@@ -20,7 +21,7 @@
             android:layout_height="wrap_content"
             android:layout_marginEnd="12dp"
             android:layout_marginStart="12dp"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="8dp"
             android:ellipsize="end"
             android:maxLines="2"
             android:text="Title"

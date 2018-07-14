@@ -59,6 +59,14 @@
                     android:padding="2dp"
                     android:tag="type_answer"
                     android:text="@string/type_answer" />
+
+                <CheckBox
+                    android:id="@+id/checkBox_pin"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:tag="type_pin"
+                    android:text="@string/type_pin"
+                    android:visibility="gone" />
             </LinearLayout>
 
             <android.support.v7.widget.GridLayout

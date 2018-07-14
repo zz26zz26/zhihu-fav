@@ -10,6 +10,7 @@
     <string name="filter_other">其他：</string>
     <string name="type_article">文章</string>
     <string name="type_answer">回答</string>
+    <string name="type_pin">想法</string>
     <string name="sort_asc">升序</string>
     <string name="sort_desc">降序</string>
     <string name="field_title">问题标题</string>

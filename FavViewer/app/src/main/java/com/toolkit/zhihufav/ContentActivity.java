@@ -33,6 +33,7 @@ import android.support.v4.widget.NestedScrollView;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.text.TextUtils;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.ActionMode;
@@ -500,6 +501,7 @@ public class ContentActivity extends AppCompatActivity {
                     default:
                         return;  // 连续点击太多次就不管咯
                 }
+                if (TextUtils.isEmpty(key)) return;  // 空关键字必有结果，但无关
 
                 // 在manifest里设置main的launchMode="singleTask"，则startActivity时可重用最初的
                 // 但main设置singleTask会把其上的窗口都杀掉，因此即使本窗口设为singleTop也不能复用
