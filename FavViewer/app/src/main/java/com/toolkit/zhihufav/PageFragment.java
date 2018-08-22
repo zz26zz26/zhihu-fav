@@ -21,6 +21,7 @@ import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.webkit.ValueCallback;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -246,9 +247,14 @@ public class PageFragment extends Fragment {
             return false;  // false才能让CANCEL传到onTouchEvent
         }
 
+        private boolean canScroll(WebView webView) {
+            return webView.getHeight() < webView.getContentHeight() ||
+                    webView.getScrollX() > 0 || webView.canScrollHorizontally(1);  // getContentWidth不可用
+        }
+
         @Override
         public boolean onTouch(View v, MotionEvent event) {
-            WebView webView = (WebView) v;
+            final WebView webView = (WebView) v;
             int mode = getContentMode(webView);
 
             boolean consumed = false;
@@ -342,27 +348,29 @@ public class PageFragment extends Fragment {
                             }
                         } else if (MODE_IMAGE == mode) {  // 视频模式进来也放不大
                             if (currentTime - touchUpTime < 300) {  // ViewConfiguration.getDoubleTapTimeout()
-                                if (webView.zoomOut())              // 能缩小(out)就缩到最小
-                                    for (int i = 0; i < 7; i++)     // 放最大也就能缩小7次
-                                        webView.zoomOut();
-                                else
-                                    for (int i = 0; i < 5; i++)
-                                        webView.zoomIn();
+                                webView.loadUrl("javascript:zoom(" + event.getX() + "," + event.getY() + ")");
                             }
                         }
                         touchUpTime = currentTime;
-                    } else if (dragDirection == 1 && MODE_IMAGE == mode && !webView.canZoomOut()) {
-                        tracker.computeCurrentVelocity(1000);  // 图片页未放大时横滑可切换图
-                        if (Math.abs(tracker.getXVelocity()) > config.getScaledMinimumFlingVelocity()) {
-                            int next = findInImageSource(mImageSource, (String) webView.getTag(R.id.web_tag_url));
-                            if (next != -1)
-                                next -= (int) Math.signum(tracker.getXVelocity());  // 向右滑是正，但要拿上一张
-                            if (next >= 0 && next < mImageSource.length) {
-                                String temp_url = mImageSource[next];
-                                loadImagePage(webView, temp_url);  // 没缩略图时下面无效(没网会空着)
-                                performClickImage(webView, temp_url);  // 已有缩略图就去开大图
-                                mPostponeModeChange = true;  // 借用载入动图，要在loadImage后
-                            }
+                    } else if (dragDirection == 1 && MODE_IMAGE == mode) {
+                        tracker.computeCurrentVelocity(1000);  // 回调时tracker已释放
+                        final float velX = tracker.getXVelocity();  // 图片页未放大时横滑可切换图
+                        if (Math.abs(velX) > config.getScaledMinimumFlingVelocity()) {
+                            webView.evaluateJavascript("javascript:is_thumb()", new ValueCallback<String>() {
+                                @Override
+                                public void onReceiveValue(String value) {
+                                    if (value == null || value.equals("false")) return;
+                                    int next = findInImageSource(mImageSource, (String) webView.getTag(R.id.web_tag_url));
+                                    if (next != -1)
+                                        next -= (int) Math.signum(velX);  // 向右滑是正，但要拿上一张
+                                    if (next >= 0 && next < mImageSource.length) {
+                                        String temp_url = mImageSource[next];
+                                        loadImagePage(webView, temp_url);  // 没缩略图时下面无效(没网会空着)
+                                        performClickImage(webView, temp_url);  // 已有缩略图就去开大图
+                                        mPostponeModeChange = true;  // 借用载入动图，要在loadImage后
+                                    }
+                                }
+                            });
                         }
                     }
                     break;
@@ -576,14 +584,6 @@ public class PageFragment extends Fragment {
                         public void run() {recallScrollPos(webView);}
                     }, 500);  // 200图多不行；最多刷新后3s跳
                 }
-                view.postDelayed(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (getContentMode(webView) == MODE_START)  // 3s够点开图片再放大了，不能在那缩小
-                            for (int i = 0; i < 7; i++)
-                                webView.zoomOut();
-                    }
-                }, 3000);  // 机子慢2s不行
             } else if (getContentMode(view) == MODE_IMAGE) {
                 if (mPostponeModeChange) performClickImage(view, url);  // 使滑动看图时下完缩略图能接着下大图/动图
                 mPostponeModeChange = false;
@@ -900,11 +900,6 @@ public class PageFragment extends Fragment {
             return;  // 空地址当然就直接忽略，保持原状；除非再写个loadBlankPage
         }
 
-        if (webView.zoomOut()) {
-            for (int i = 0; i < 7; i++)
-                webView.zoomOut();  // 缩回最小，不然从放大的图片返回点击位置有偏差
-        }
-
         PageFragment fragment = (PageFragment) webView.getTag(R.id.web_tag_fragment);
         if (fragment != null) {  // 要改浏览器所在的Fragment的参数
             fragment.mCacheOnly = true;  // 先禁止联网，没缓存的会由js替换为占位图
@@ -915,9 +910,7 @@ public class PageFragment extends Fragment {
         storeScrollPos(webView);
         setContentMode(webView, MODE_START);
         webView.setTag(R.id.web_tag_url, url);
-        WebSettings settings = webView.getSettings();
-        settings.setTextZoom(sTextZoom);  // 不然等划完了才缩放不好看
-        settings.setBuiltInZoomControls(false);  // 禁止手动缩放
+        webView.getSettings().setTextZoom(sTextZoom);  // 等滑动完才缩放不好看
         String html = (String) webView.getTag(R.id.web_tag_in_html);
         webView.loadDataWithBaseURL(url, html, "text/html", "utf-8", null);
         // 点击外链/公式图链接时，baseUrl不完整不触发shouldOverrideUrlLoading，至少要http://www.zhihu.com
@@ -942,27 +935,77 @@ public class PageFragment extends Fragment {
         if (url.contains(PRE_EQUATION)) color = "rgba(255,255,255, .2)";  // svg作背景改不了颜色
         String pager = "";
         if (fragment != null)
-            pager = "<div style=\"position:fixed; right:5px; bottom:5px; padding:5px; color:#111; background:rgba(192,192,192,.3);\">" +
+            pager = "<style>@keyframes blink { 0% {opacity:1} 30% {opacity:0} 60% {opacity:1} }</style>" +
+                    "<div style=\"position:fixed; right:5px; bottom:5px; padding:5px; color:#111;" +
+                    "background:rgba(192,192,192, .3); animation:blink 2s infinite;\">" +  // 4.4的WebView不支持css动画
                     (findInImageSource(fragment.mImageSource, url) + 1) + " / " + fragment.mImageSource.length + "</div>";
 
-        String html = "<html><body style=\"margin:0\">" +
-//                          "<img src=\"" + url + "\" width=\"100%\" " +
-//                          "style=\"position:absolute; display:block; " +
-//                          "top:50%; left:50%; transform:translate(-50%,-50%);\">" +
-//                          // 上下这两种显示超过屏幕高度的图时，显示不了中间以上的内容
-//                          "<img src=\"" + url + "\" width=\"100%\" " +
-//                          "style=\"position:absolute; display:block; " +
-//                          "top:0; left:0; right:0; bottom:0; margin:auto;\">" +
-                      "<div style=\"background:" + color + " url(" + url + ") no-repeat center center;" +
-                      "background-size:contain; width:100%; height:100%\" />" +
-                      pager + "</body></html>";
+        String script = "<script>" +
+                        "img = document.getElementsByTagName('img')[0];" +
+                        "img_box = img.parentNode;" +
+                        "img_serial = document.getElementsByTagName('div')[1];" +
+                        "function load(code) {" +
+                        "    img_serial.style.animation = '';" +
+                        "    if (code) { img_serial.innerHTML = '加载失败'; return; }" +
+                        "    width = img.width;" +
+                        "    height = img.height;" +
+                        "    window.addEventListener('resize', img_locate);" +  // 考虑转屏
+                        "    console.log('width = ' + width + 'px, height = ' + height + 'px');" +  // css的px即安卓的dp
+                        "}" +
+                        "function is_thumb() {" +
+                        "    return img.style.display === 'none';" +
+                        "}" +
+                        "function zoom(x, y) {" +
+                        "    if (typeof(width) === 'undefined') return;" +  // 双击时webView直接调zoom，没加载完不给放大
+                        "    if (is_thumb()) {" +
+                        "        img.style.display = 'block';" +
+                        "        img_box.style.backgroundImage = '';" +
+                        "        img_serial.style.display = 'none';" +
+                        "        img_locate(x, y);" +
+                        "    } else {" +
+                        "        img.style.display = 'none';" +
+                        "        img_box.style.backgroundImage = 'url(' + img.src + ')';" +
+                        "        img_serial.style.display = 'block';" +
+                        "        console.log('display = ' + img.style.display);" +
+                        "    }" +
+                        "}" +
+                        "function img_locate(x, y) {" +
+                        "    var dpr = window.devicePixelRatio;" +
+                        "    var box_width = document.body.clientWidth;" +
+                        "    var box_height = document.body.clientHeight;" +
+                        "    var init_zoom = Math.min(box_width / width, box_height / height);" +
+                        "    var space_left = (box_width - width * init_zoom) / 2;" +
+                        "    var space_top = (box_height - height * init_zoom) / 2;" +
+                        "    if (width < box_width)" +  // 居中显示比窗口小的图
+                        "        img.style.left = (box_width - width) / 2;" +
+                        "    else" +  // 双击处放大后在屏幕中心，css默认单位px与设备像素密度有关
+                        "        img_box.scrollLeft = (x / dpr - space_left) / init_zoom - box_width / 2;" +
+                        "    if (height < box_height)" +
+                        "        img.style.top = (box_height - height) / 2;" +
+                        "    else" +
+                        "        img_box.scrollTop = (y / dpr - space_top) / init_zoom - box_height / 2;" +
+                        "}" +
+                        "</script>";
 
-        WebSettings settings = webView.getSettings();
-        settings.setSupportZoom(true);          // 默认开
-        settings.setBuiltInZoomControls(true);  // 默认关
-        settings.setDisplayZoomControls(false); // 开上面默认开
+        // 初始时使用div的背景显示图片，便于载入过程中不必自己轮询获取图片尺寸并处理图片位置
+        // 似乎浏览器bug，直接显示宽>高的图片时，页面高度会变得与宽度一样，造成图下方留白，不美观
+        // 绑定事件用ondblclick="zoom()"没反应，onclick有但要自己判断点击间隔；定位fixed防止overflow失效
+        String html = "<html><body style=\"margin:0; width:100%; height:100%; position:fixed; overflow:hidden;\">" +
+                      "<div style=\"background:" + color + " url(" + url + ") no-repeat center center;" +
+                      " background-size:contain; height:100%; overflow:auto;\">" +  // div自动填满width
+                      "<img src=\"" + url + "\" style=\"position:relative; display:none\"" +
+                      " onload=\"load(0)\" onerror=\"load(-1)\">" +  // 用absolute滚动不了
+                      "</div>" + pager + script + "</body></html>";
+        // 下面两种img样式(配合position:absolute)显示不了纵向长图的中间以上的内容
+        // top:50%; left:50%; transform:translate(-50%,-50%)
+        // top:0; left:0; right:0; bottom:0; margin:auto;
+
+//        WebSettings settings = webView.getSettings();
+//        settings.setSupportZoom(true);          // 默认开
+//        settings.setBuiltInZoomControls(true);  // 默认关
+//        settings.setDisplayZoomControls(false); // 开上面默认开
         webView.setTag(R.id.web_tag_url, url);
-        webView.loadDataWithBaseURL(url, html, "text/html", "utf-8", null);
+        webView.loadDataWithBaseURL(url, html, "text/html", "utf-8", null);  // loadUrl图原始大小靠左上
 
         ContentActivity activity = ContentActivity.getReference();
         if (activity != null) {
@@ -1113,7 +1156,7 @@ public class PageFragment extends Fragment {
         webView.setWebViewClient(new CachedWebViewClient());
         webView.setOnTouchListener(new OnTouchListener());
         webView.setBackgroundColor(sBackColor);  // 防夜间快速换页时闪过白色，xml里WebView的background没用
-        webView.getSettings().setJavaScriptEnabled(true);  // 夜间模式和懒加载还是得用
+        webView.getSettings().setJavaScriptEnabled(true);  // 夜间模式/懒加载/放大图片都得用
 //        WebSettings settings = webView.getSettings();
 //        settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);  // 视频的js就要新的吧
 //        settings.setLoadsImagesAutomatically(false);  // 只加载页面文字，等切换到再图片
