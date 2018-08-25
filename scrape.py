@@ -476,7 +476,7 @@ if __name__ == '__main__':  # 脚本模式运行此文件时进入
     # 可直接设置fav_entry链接爬取指定的收藏夹(此时上面all_fav开始到这一行之间的代码都可注释掉)
     # fav_entry = ['https://www.zhihu.com/collection/106496199']
     # fav_title = ['十八字以内...']  # 这个随便设 只要len与entry一致
-    for i in range(1, len(fav_entry)):
+    for i in range(0, len(fav_entry)):
         print('\n%s (%s)' % (fav_entry[i], fav_title[i]))
         fav = get_data(fav_entry[i], header, ignore_old=True)
         get_data_detail(fav, header, ignore_gif=True)  # 新收藏的回答里没有Gif可设为True
