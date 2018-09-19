@@ -95,8 +95,8 @@ public class PageFragment extends Fragment {
         private int dragDirection;  // 0非拖动(点击) 1主要X轴(横向) 2主要Y轴(纵向)
         private int initialPointerId;  // 防止多点触控视为滑动，然后造成ViewPager出错闪退
         private long touchDownTime, touchUpTime, lastScrollY;  // lastScrollY用于判定fling是否结束
-        private float touchStartX, touchStartY, lastCenterX, lastCenterY;
-        private float initialTop, lastSpan, lastMotionX, lastMotionY;
+        private float touchStartX, touchStartY, lastCenterX, lastCenterY;  // center多指切换时会突变
+        private float initialTop, lastMotionX, lastMotionY;  // motion多指时也能保持连续
         private boolean inNestedScroll, inNestedFling = false;
 
         private void startFlingScroll(WebView webView) {
@@ -268,10 +268,10 @@ public class PageFragment extends Fragment {
         }
 
         private boolean dispatchScaleGesture(WebView webView, MotionEvent event) {
-            if (event.getPointerCount() < 2) {  // 看图模式才会进来，非多指直接出去
+            if (event.getPointerCount() < 2) {  // 看图模式才会进来，非多指直接出去(POINTER_UP还不会出)
                 if (inNestedScroll) {  // 最初的DOWN时此变量已设为false
-                    Log.d(TAG, "Scale gesture finished.");
-                    event.setAction(MotionEvent.ACTION_DOWN);  // 多指转单指时生成一个DOWN
+                    Log.d(TAG, "dispatchScaleGesture: finished.");
+                    event.setAction(MotionEvent.ACTION_DOWN);  // 多指转单指时生成一个DOWN(5.0需要)
                     inNestedScroll = false;  // 之后的event就不必再改动
                 }
                 return false;  // 单指滑动让WebView处理，毕竟它能fling
@@ -279,22 +279,24 @@ public class PageFragment extends Fragment {
             int action = event.getAction();
             float[] center = getPointerCenter(event);
             float span = getPointerSpan(event, center[0], center[1]);
-            float scaleFactor = span / lastSpan;
-            boolean performZoom = MotionEvent.ACTION_MOVE == action && Math.abs(scaleFactor - 1) > 1e-2f;
+            boolean performZoom = MotionEvent.ACTION_MOVE == action;
             if (performZoom) {
                 lastMotionX += center[0] - lastCenterX;
                 lastMotionY += center[1] - lastCenterY;
-                webView.loadUrl("javascript:zoom(" + lastMotionX + "," + lastMotionY + "," + scaleFactor + ")");
+                webView.loadUrl("javascript:zoom(" + lastMotionX + "," + lastMotionY + "," + span + ")");
             }
-            if (action >= MotionEvent.ACTION_POINTER_DOWN || 0 == lastSpan || performZoom) {
+            if (action >= MotionEvent.ACTION_POINTER_DOWN || performZoom) {
                 lastCenterX = center[0];  // 积累到动作够大才缩放，防止手指没动时图片一直抖？
                 lastCenterY = center[1];  // 放下/抬起手指时强制更新，防止中心和倍数突变
-                lastSpan = span;
             }
             // WebView将多指也视为滑动，造成在js基础上又多滑一段(且不易与js同步)，需取消
             // 按下/抬起要给WebView，使抬起到只剩一根手指时，即使不是最初的手指也能单指滑动
             if (MotionEvent.ACTION_MOVE == action) event.setAction(MotionEvent.ACTION_CANCEL);
-            inNestedScroll = true;  // 多指时不会有ACTION_UP，直接全部改成CANCEL即可
+            if (!inNestedScroll) {  // 开始缩放时(POINTER_DOWN)，更新js的缩放中心起始点；不与performZoom同时
+                webView.loadUrl("javascript:zoom(" + lastMotionX + "," + lastMotionY + ", -1)");  // 单指时也在更新
+                inNestedScroll = true;  // 多指时不会有ACTION_UP(抬最后一根才会)，直接全部改成CANCEL即可
+                Log.i(TAG, "dispatchScaleGesture: started.");
+            }
             return false;  // 若返回true则最后单指UP时此处管不了consumed，于是WebView会收到这个UP使滚动突变
         }
 
@@ -356,7 +358,6 @@ public class PageFragment extends Fragment {
                     initialTop = top;
                     dragDirection = 0;
                     inNestedScroll = false;
-                    lastSpan = 0;
                     lastMotionX = lastCenterX = event.getX();
                     lastMotionY = lastCenterY = event.getY();
                     if (tracker == null) tracker = VelocityTracker.obtain();
@@ -1010,28 +1011,32 @@ public class PageFragment extends Fragment {
                         "    if (code) { img_serial.innerHTML = '加载失败'; return; }" +
                         "    init_width = img.width;" +
                         "    init_height = img.height;" +  // 修改之前这俩就是原始尺寸
-                        "    img_locate();" +  // 里面能初始化init_scale
+                        "    last_time = 0;" +  // 初始化节流
+                        "    img_locate();" +  // 参数全为undefined，用于初始化init_scale
                         "    window.addEventListener('resize', img_locate);" +  // 放大时转屏(没放大时div背景自己会变)
                         "    console.log('width = ' + init_width + 'px, height = ' + init_height + 'px');" +  // css的px即安卓的dp
                         "}" +
                         "function is_thumb() {" +
                         "    return img.style.display === 'none';" +
                         "}" +
-                        "function zoom(x, y, k) {" +  // 双击时webView直接调此zoom
+                        "function zoom(x, y, d) {" +  // 双击时webView直接调此zoom
                         "    if (typeof(init_width) === 'undefined')" +
                         "        return;" +  // 没加载完不给放大
-                        "    if (k || is_thumb()) {" +
+                        "    if (d || is_thumb()) {" +
                         "        if (!is_thumb()) {" +  // 已经放大的改尺寸即可
-                        "            img_locate(x, y, k);" +
+                        "            var curr_time = new Date().valueOf();" +
+                        "            if (d < 0) { last_x = last_y = last_d = 0; }" +  // 多指按下事件时调用
+                        "            else if (curr_time - last_time > 50) { img_locate(x, y, d); last_time = curr_time; }" +
                         "            return;" +
                         "        }" +
+                        "        last_x = 0; last_y = 0; last_d = 0;" +
                         "        img.style.display = 'block';" +
                         "        img_box.style.backgroundImage = '';" +
                         "        img_serial.style.display = 'none';" +
                         "        img.width = init_width * init_scale;" +
                         "        img.height = init_height * init_scale;" +
                         "        img_locate(0, 0, 1);" +  // 正式locate前弄好尺寸/位置
-                        "        img_locate(x, y, k);" +  // 双击时k是undefined
+                        "        img_locate(x, y, d);" +  // 双击时k是undefined
                         "    } else {" +
                         "        img.style.display = 'none';" +
                         "        img_box.style.backgroundImage = 'url(' + img.src + ')';" +
@@ -1039,12 +1044,14 @@ public class PageFragment extends Fragment {
                         "        console.log('display = ' + img.style.display);" +
                         "    }" +
                         "}" +
-                        "function img_locate(x, y, k) {" +
+                        "function img_locate(x, y, d) {" +  // d理解为直径
+                        "    console.log('x = ' + x + ', y = ' + y + ', d = ' + d);" +
                         "    var box_width = document.body.clientWidth;" +
                         "    var box_height = document.body.clientHeight;" +
-                        "    var scale = img.width / init_width;" +  // 转屏时重算适合窗口的比例
+                        "    var scale = img.width / init_width;" +  // 转屏时重算适合窗口的init_scale
                         "    init_scale = Math.min(box_width / init_width, box_height / init_height);" +
-                        "    if (k) {" +
+                        "    if (d) {" +
+                        "        var k = last_d ? d / last_d : 1;  last_d = d;" +
                         "        var min_scale = Math.min(1, init_scale);" +  // 缩放比例限制1-2倍
                         "        var max_scale = Math.max(2, init_scale);" +  // 结合初始比例放宽
                         "        var new_scale = Math.min(Math.max(min_scale, k * scale), max_scale);" +
@@ -1052,13 +1059,12 @@ public class PageFragment extends Fragment {
                         "        scale = new_scale;" +
                         "        img.width = init_width * scale;" +
                         "        img.height = init_height * scale;" +
-                        "    } else {" +
-                        "        k = 1 / scale;" +  // 即一发到位100%
+                        "    } else if (x || y) {" +  // 双击时要给缩放中心(手点不到(0,0)点的)
+                        "        var k = 1 / scale;" +  // 一发到位100%
                         "        scale = init_scale;" +
                         "        img.width = init_width;" +
                         "        img.height = init_height;" +
-                        "    }" +
-//                        "    console.log('x = ' + x + ', y = ' + y + ', k = ' + k);" +
+                        "    } else return;" +  // x/y/d均为0或未定义则不必继续，改好init_scale就走
 //                        "    console.log('left = ' + img.offsetLeft + ', scrollLeft = ' + img_box.scrollLeft);" +
 //                        "    console.log('top = ' + img.offsetTop + ', scrollTop = ' + img_box.scrollTop);" +
                         "    var dpr = window.devicePixelRatio;" +  // 用于屏幕像素转css像素
@@ -1066,14 +1072,16 @@ public class PageFragment extends Fragment {
                         "        img.style.left = (box_width - img.width) / 2;" +
                         "    } else if (x) {" +  // 图比窗口宽时以双击处为中心缩放
                         "        x = x / dpr;" +  // 下面的offsetLeft和scrollLeft同时只有至多1个非零
-                        "        img_box.scrollLeft = k * (x - img.offsetLeft + img_box.scrollLeft) - x;" +
+                        "        var dx = last_x ? x - last_x : 0;  last_x = x;" +  // 图像平移要单独算
+                        "        img_box.scrollLeft = k * (x - img.offsetLeft + img_box.scrollLeft) - x - dx;" +
                         "        img.style.left = 0;" +  // 读取时样式left返回字符串'0px'，js属性offsetLeft(只读)返回整数
                         "    }" +
                         "    if (img.height < box_height) {" +  // 图高度同理
                         "        img.style.top = (box_height - img.height) / 2;" +
                         "    } else if (y) {" +
                         "        y = y / dpr;" +
-                        "        img_box.scrollTop = k * (y - img.offsetTop + img_box.scrollTop) - y;" +
+                        "        var dy = last_y ? y - last_y : 0;  last_y = y;" +
+                        "        img_box.scrollTop = k * (y - img.offsetTop + img_box.scrollTop) - y - dy;" +
                         "        img.style.top = 0;" +
                         "    }" +
                         "}" +
